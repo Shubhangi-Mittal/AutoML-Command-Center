@@ -1,16 +1,29 @@
 version: "3.8"
 
 services:
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=automl
+      - POSTGRES_USER=automl
+      - POSTGRES_PASSWORD=automl_secret
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
   backend:
     build: ./backend
     ports:
       - "8000:8000"
     environment:
-      - DATABASE_URL=sqlite:///./automl.db
+      - DATABASE_URL=postgresql://automl:automl_secret@postgres:5432/automl
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - UPLOAD_DIR=/tmp/uploads
       - MODEL_DIR=/tmp/models
       - ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173
+    depends_on:
+      - postgres
     volumes:
       - ./backend:/app
       - uploads:/tmp/uploads
@@ -28,3 +41,4 @@ services:
 volumes:
   uploads:
   models:
+  pgdata:
