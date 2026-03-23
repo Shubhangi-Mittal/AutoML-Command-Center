@@ -20,7 +20,7 @@ def profile_dataset(file_path: str) -> Dict[str, Any]:
 			"dtypes": {},
 		}
 
-	header = rows[0]
+	header = [str(column).replace("\ufeff", "").strip() for column in rows[0]]
 	data_rows = rows[1:]
 	col_count = len(header)
 
