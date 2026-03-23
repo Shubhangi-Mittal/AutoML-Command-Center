@@ -66,7 +66,6 @@ export default function RootLayout({
 
           {!collapsed && (
             <div className="p-4 border-t border-slate-700 text-xs text-slate-500">
-              Divyesh Mistry
               <br />v1.0.0
             </div>
           )}
