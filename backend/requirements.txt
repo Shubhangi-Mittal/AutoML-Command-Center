@@ -6,3 +6,10 @@ pydantic-settings
 python-multipart
 mlflow
 alembic
+scikit-learn
+xgboost
+pandas
+numpy
+anthropic
+celery
+redis

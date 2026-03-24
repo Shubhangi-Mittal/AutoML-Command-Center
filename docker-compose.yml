@@ -12,18 +12,25 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
 
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
   backend:
     build: ./backend
     ports:
       - "8000:8000"
     environment:
       - DATABASE_URL=postgresql://automl:automl_secret@postgres:5432/automl
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - ANTHROPIC_API_KEY=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
       - UPLOAD_DIR=/tmp/uploads
       - MODEL_DIR=/tmp/models
+      - REDIS_URL=redis://redis:6379/0
       - ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173
     depends_on:
       - postgres
+      - redis
     volumes:
       - ./backend:/app
       - uploads:/tmp/uploads
