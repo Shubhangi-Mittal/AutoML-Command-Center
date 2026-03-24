@@ -13,6 +13,42 @@ from app.services.profiler import profile_dataset
 router = APIRouter()
 
 
+@router.get("/")
+def list_datasets(db: Session = Depends(get_db)):
+	datasets = db.query(Dataset).order_by(Dataset.created_at.desc()).all()
+	return [
+		{
+			"id": d.id,
+			"name": d.name,
+			"rows": d.rows,
+			"columns": d.columns,
+			"size_bytes": d.size_bytes,
+			"target_column": d.target_column,
+			"task_type": d.task_type,
+			"created_at": d.created_at.isoformat() if d.created_at else None,
+		}
+		for d in datasets
+	]
+
+
+@router.get("/{dataset_id}")
+def get_dataset(dataset_id: str, db: Session = Depends(get_db)):
+	dataset = db.query(Dataset).filter(Dataset.id == dataset_id).first()
+	if not dataset:
+		raise HTTPException(status_code=404, detail="Dataset not found")
+	return {
+		"id": dataset.id,
+		"name": dataset.name,
+		"rows": dataset.rows,
+		"columns": dataset.columns,
+		"size_bytes": dataset.size_bytes,
+		"target_column": dataset.target_column,
+		"task_type": dataset.task_type,
+		"profile": dataset.profile,
+		"created_at": dataset.created_at.isoformat() if dataset.created_at else None,
+	}
+
+
 @router.post("/upload")
 async def upload_dataset(file: UploadFile = File(...), db: Session = Depends(get_db)):
 	if not file.filename:
@@ -42,6 +78,8 @@ async def upload_dataset(file: UploadFile = File(...), db: Session = Depends(get
 		columns=profile.get("column_count"),
 		size_bytes=size_bytes,
 		profile=profile,
+		target_column=profile.get("suggested_target"),
+		task_type=profile.get("suggested_task_type"),
 	)
 
 	db.add(dataset)
