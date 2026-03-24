@@ -9,6 +9,7 @@ class Settings(BaseSettings):
 	UPLOAD_DIR: str = "./uploads"
 	MODEL_DIR: str = "./models"
 	MAX_UPLOAD_SIZE_MB: int = 100
+	ALLOWED_ORIGINS: str = "http://localhost:3000"
 
 	model_config = SettingsConfigDict(env_file=".env")
 

@@ -15,7 +15,7 @@ app = FastAPI(title="AutoML Command Center", version="1.0.0")
 
 app.add_middleware(
 	CORSMiddleware,
-	allow_origins=["http://localhost:3000", "https://your-app.vercel.app"],
+	allow_origins=[o.strip() for o in settings.ALLOWED_ORIGINS.split(",")],
 	allow_credentials=True,
 	allow_methods=["*"],
 	allow_headers=["*"],
