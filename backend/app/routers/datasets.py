@@ -86,4 +86,14 @@ async def upload_dataset(file: UploadFile = File(...), db: Session = Depends(get
 	db.commit()
 	db.refresh(dataset)
 
-	return {"dataset_id": dataset.id, "profile": profile}
+	return {
+		"id": dataset.id,
+		"name": dataset.name,
+		"rows": dataset.rows,
+		"columns": dataset.columns,
+		"size_bytes": dataset.size_bytes,
+		"target_column": dataset.target_column,
+		"task_type": dataset.task_type,
+		"profile": dataset.profile,
+		"created_at": dataset.created_at.isoformat() if dataset.created_at else None,
+	}

@@ -76,19 +76,19 @@ class FeatureEngine:
 
             if pd.api.types.is_numeric_dtype(self.df[col]):
                 median_val = self.df[col].median()
-                self.df[col].fillna(median_val, inplace=True)
+                self.df[col] = self.df[col].fillna(median_val)
                 self.transformations.append(
                     f"Imputed '{col}' with median ({median_val:.4f})"
                 )
             else:
                 mode_val = self.df[col].mode()
                 if len(mode_val) > 0:
-                    self.df[col].fillna(mode_val[0], inplace=True)
+                    self.df[col] = self.df[col].fillna(mode_val[0])
                     self.transformations.append(
                         f"Imputed '{col}' with mode ('{mode_val[0]}')"
                     )
                 else:
-                    self.df[col].fillna("unknown", inplace=True)
+                    self.df[col] = self.df[col].fillna("unknown")
                     self.transformations.append(
                         f"Imputed '{col}' with 'unknown'"
                     )

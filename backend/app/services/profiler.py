@@ -56,6 +56,7 @@ def _profile_column(series: pd.Series) -> Dict[str, Any]:
 
     if pd.api.types.is_numeric_dtype(series) and len(non_null) > 0:
         col_profile["type"] = "numeric"
+        col_profile["dtype_category"] = "numeric"
         col_profile["mean"] = round(float(non_null.mean()), 4)
         col_profile["median"] = round(float(non_null.median()), 4)
         col_profile["std"] = round(float(non_null.std()), 4)
@@ -69,6 +70,7 @@ def _profile_column(series: pd.Series) -> Dict[str, Any]:
         col_profile["histogram"] = _compute_histogram(non_null)
     else:
         col_profile["type"] = "categorical"
+        col_profile["dtype_category"] = "categorical"
         top_values = non_null.value_counts().head(10)
         col_profile["top_values"] = {
             str(k): int(v) for k, v in top_values.items()
@@ -93,23 +95,33 @@ def _compute_histogram(series: pd.Series, bins: int = 20) -> List[Dict[str, Any]
     ]
 
 
-def _compute_correlations(df: pd.DataFrame) -> Dict[str, Dict[str, float]]:
-    """Compute pairwise correlations for numeric columns."""
+def _compute_correlations(df: pd.DataFrame) -> Dict[str, Any]:
+    """Compute pairwise correlations for numeric columns, returned as top_pairs."""
     numeric_df = df.select_dtypes(include=[np.number])
     if numeric_df.empty or len(numeric_df.columns) < 2:
-        return {}
+        return {"top_pairs": []}
 
     corr_matrix = numeric_df.corr()
-    correlations: Dict[str, Dict[str, float]] = {}
 
+    # Build sorted list of unique pairs by absolute correlation
+    pairs: List[Dict[str, Any]] = []
+    seen = set()
     for col in corr_matrix.columns:
-        correlations[col] = {
-            other: round(float(corr_matrix.loc[col, other]), 4)
-            for other in corr_matrix.columns
-            if other != col
-        }
+        for other in corr_matrix.columns:
+            if col >= other:
+                continue
+            key = (col, other)
+            if key not in seen:
+                seen.add(key)
+                pairs.append({
+                    "col1": col,
+                    "col2": other,
+                    "correlation": round(float(corr_matrix.loc[col, other]), 4),
+                })
 
-    return correlations
+    pairs.sort(key=lambda p: abs(p["correlation"]), reverse=True)
+
+    return {"top_pairs": pairs}
 
 
 def _suggest_target(
