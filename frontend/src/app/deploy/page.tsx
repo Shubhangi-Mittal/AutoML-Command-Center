@@ -112,17 +112,20 @@ export default function DeployPage() {
   }
 
   return (
-    <div className="p-6 max-w-4xl mx-auto">
-      <h1 className="text-2xl font-bold text-gray-900 mb-1">Deploy & Predict</h1>
-      <p className="text-gray-500 text-sm mb-6">
-        Deploy a trained model and test predictions via the REST API
-      </p>
+    <div className="p-6 max-w-6xl mx-auto">
+      <div className="relative overflow-hidden rounded-[2rem] border border-slate-200/80 bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.16),_transparent_24%),radial-gradient(circle_at_bottom_right,_rgba(14,165,233,0.12),_transparent_18%),linear-gradient(135deg,_rgba(255,255,255,0.95),_rgba(247,250,252,0.9))] px-8 py-10 mb-8 shadow-[0_24px_70px_rgba(15,23,42,0.07)]">
+        <p className="text-xs font-semibold uppercase tracking-[0.28em] text-emerald-600 mb-3">Serving Console</p>
+        <h1 className="font-display text-4xl font-bold text-gray-900 mb-3">Deploy a model, probe predictions, and watch inference activity.</h1>
+        <p className="text-slate-600 text-sm md:text-base max-w-2xl leading-7">
+          Move from experiment results to a live prediction workflow with sample payloads, explanation traces, and lightweight serving telemetry.
+        </p>
+      </div>
 
       {/* Current Status */}
-      <div className={`rounded-lg border p-5 mb-6 ${
+      <div className={`glass-card rounded-[1.75rem] p-6 mb-6 ${
         status?.status === "deployed"
-          ? "bg-emerald-50 border-emerald-200"
-          : "bg-gray-50 border-gray-200"
+          ? "bg-emerald-50/80 border-emerald-200"
+          : "bg-white/70 border-gray-200"
       }`}>
         <div className="flex items-center justify-between">
           <div>
@@ -163,8 +166,8 @@ export default function DeployPage() {
       </div>
 
       {/* Deploy a model */}
-      <div className="bg-white rounded-lg border border-gray-200 p-5 mb-6">
-        <h3 className="text-sm font-semibold text-gray-700 mb-3">Deploy a Model</h3>
+      <div className="glass-card rounded-[1.75rem] p-6 mb-6">
+        <h3 className="font-display text-xl font-semibold text-gray-800 mb-4">Deploy a Model</h3>
 
         <div className="mb-4">
           <label className="text-xs text-gray-500 mb-1 block">Select Dataset</label>
@@ -185,7 +188,7 @@ export default function DeployPage() {
             {jobs.map((job) => (
               <div
                 key={job.id}
-                className="flex items-center justify-between p-3 rounded-lg border border-gray-100 hover:border-gray-200"
+                className="flex items-center justify-between p-4 rounded-2xl border border-gray-100 hover:border-sky-200 bg-white/80"
               >
                 <div>
                   <p className="text-sm font-medium text-gray-900">{job.model_type}</p>
@@ -219,14 +222,14 @@ export default function DeployPage() {
 
       {/* Test Predictions */}
       {status?.status === "deployed" && (
-        <div className="bg-white rounded-lg border border-gray-200 p-5 mb-6">
-          <h3 className="text-sm font-semibold text-gray-700 mb-3">Test Prediction</h3>
+        <div className="glass-card rounded-[1.75rem] p-6 mb-6">
+          <h3 className="font-display text-xl font-semibold text-gray-800 mb-3">Test Prediction</h3>
           <p className="text-xs text-gray-500 mb-3">
             Enter feature values as JSON. Keys must match the training feature names.
           </p>
 
           {template && (
-            <div className="mb-3 flex items-center justify-between rounded-lg border border-blue-100 bg-blue-50 px-3 py-2">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-sky-100 bg-sky-50 px-4 py-3">
               <p className="text-xs text-blue-700">
                 Sample payload ready for {template.dataset_name}
               </p>
@@ -249,7 +252,7 @@ export default function DeployPage() {
             value={featureInput}
             onChange={(e) => setFeatureInput(e.target.value)}
             rows={6}
-            className="w-full border border-gray-200 rounded-lg px-4 py-3 text-sm font-mono focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 mb-3"
+            className="w-full border border-gray-200 rounded-2xl px-4 py-3 text-sm font-mono focus:outline-none focus:border-sky-400 focus:ring-1 focus:ring-sky-100 mb-3 bg-white/80"
             placeholder='{"feature1": 1.0, "feature2": "value", ...}'
           />
 
@@ -272,7 +275,7 @@ export default function DeployPage() {
           {error && <p className="text-sm text-red-600 mt-3">{error}</p>}
 
           {prediction && (
-            <div className="mt-4 bg-emerald-50 rounded-lg border border-emerald-200 p-4">
+            <div className="mt-4 rounded-[1.5rem] border border-emerald-200 bg-emerald-50 p-5">
               <h4 className="text-sm font-semibold text-emerald-800 mb-2">Prediction Result</h4>
               <div className="font-mono text-sm text-emerald-900">
                 {(() => {
@@ -297,7 +300,7 @@ export default function DeployPage() {
           )}
 
           {explanation && explanation.top_contributors.length > 0 && (
-            <div className="mt-4 bg-white rounded-lg border border-gray-200 p-4">
+            <div className="mt-4 rounded-[1.5rem] border border-gray-200 bg-white/90 p-5">
               <h4 className="text-sm font-semibold text-gray-800 mb-2">Prediction Explanation</h4>
               <div className="space-y-2">
                 {explanation.top_contributors.map((item) => (
@@ -315,11 +318,11 @@ export default function DeployPage() {
       )}
 
       {history.length > 0 && (
-        <div className="bg-white rounded-lg border border-gray-200 p-5 mb-6">
-          <h3 className="text-sm font-semibold text-gray-700 mb-3">Recent Prediction History</h3>
+        <div className="glass-card rounded-[1.75rem] p-6 mb-6">
+          <h3 className="font-display text-xl font-semibold text-gray-800 mb-3">Recent Prediction History</h3>
           <div className="space-y-2">
             {history.slice(0, 5).map((item, index) => (
-              <div key={`${item.created_at}-${index}`} className="rounded-lg border border-gray-100 px-3 py-2 text-xs">
+              <div key={`${item.created_at}-${index}`} className="rounded-2xl border border-gray-100 bg-white/80 px-4 py-3 text-xs">
                 <p className="text-gray-500">{item.created_at || "Unknown time"}</p>
                 <p className="text-gray-700">Prediction: <strong>{JSON.stringify(item.prediction)}</strong></p>
                 <p className="text-gray-500 truncate">Input: {JSON.stringify(item.features)}</p>
@@ -330,8 +333,8 @@ export default function DeployPage() {
       )}
 
       {/* API Documentation */}
-      <div className="bg-white rounded-lg border border-gray-200 p-5">
-        <h3 className="text-sm font-semibold text-gray-700 mb-3">API Endpoints</h3>
+      <div className="glass-card rounded-[1.75rem] p-6">
+        <h3 className="font-display text-xl font-semibold text-gray-800 mb-3">API Endpoints</h3>
         <div className="space-y-3 text-sm">
           <div>
             <code className="text-xs bg-gray-100 px-2 py-1 rounded font-medium">

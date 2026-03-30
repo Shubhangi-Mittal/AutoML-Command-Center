@@ -155,14 +155,23 @@ export default function AgentPage() {
   const activeDsName = datasets.find((d) => d.id === activeDataset)?.name;
 
   return (
-    <div className="flex flex-col h-screen">
+    <div className="flex flex-col min-h-screen p-6 max-w-7xl mx-auto">
+      <div className="relative overflow-hidden rounded-[2rem] border border-slate-200/80 bg-[radial-gradient(circle_at_top_left,_rgba(14,165,233,0.16),_transparent_24%),radial-gradient(circle_at_bottom_right,_rgba(16,185,129,0.12),_transparent_18%),linear-gradient(135deg,_rgba(255,255,255,0.95),_rgba(247,250,252,0.9))] px-8 py-8 mb-6 shadow-[0_24px_70px_rgba(15,23,42,0.07)]">
+        <div className="max-w-3xl">
+          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-sky-600 mb-3">AI Workspace</p>
+          <h1 className="font-display text-4xl font-bold text-gray-900 mb-3">Talk to the platform like a teammate.</h1>
+          <p className="text-slate-600 text-sm md:text-base leading-7">
+            The agent can profile a dataset, launch training, compare experiments, deploy a winner, generate prediction payloads, and keep the conversation scoped to the dataset you selected.
+          </p>
+        </div>
+      </div>
       {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between shrink-0">
+      <div className="glass-card rounded-[1.75rem] px-6 py-4 flex items-center justify-between shrink-0 mb-4">
         <div>
-          <h1 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+          <h2 className="font-display text-2xl font-bold text-gray-900 flex items-center gap-2">
             <span>🤖</span> AI Agent
-          </h1>
-          <p className="text-xs text-gray-500">
+          </h2>
+          <p className="text-xs text-gray-500 mt-1">
             Your conversational ML co-pilot
           </p>
         </div>
@@ -171,7 +180,7 @@ export default function AgentPage() {
           <select
             value={activeDataset || ""}
             onChange={(e) => setActiveDataset(e.target.value || undefined)}
-            className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 bg-white text-gray-700"
+            className="text-sm border border-gray-200 rounded-2xl px-3 py-2 bg-white text-gray-700"
           >
             <option value="">No dataset</option>
             {datasets.map((ds) => (
@@ -182,7 +191,7 @@ export default function AgentPage() {
           </select>
           <button
             onClick={handleReset}
-            className="text-xs text-gray-500 hover:text-red-600 px-2 py-1 rounded border border-gray-200 hover:border-red-200"
+            className="text-xs text-gray-500 hover:text-red-600 px-3 py-2 rounded-2xl border border-gray-200 hover:border-red-200"
           >
             Reset Chat
           </button>
@@ -190,7 +199,7 @@ export default function AgentPage() {
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-6 space-y-4">
+      <div className="glass-card rounded-[2rem] flex-1 overflow-y-auto p-6 space-y-4 min-h-[42rem]">
         {messages.length === 0 && (
           <EmptyState
             activeDataset={activeDsName}
@@ -210,7 +219,7 @@ export default function AgentPage() {
             <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-sm shrink-0">
               🤖
             </div>
-            <div className="bg-gray-100 rounded-2xl rounded-tl-sm px-4 py-3">
+            <div className="bg-slate-100 rounded-2xl rounded-tl-sm px-4 py-3">
               <div className="flex items-center gap-1.5">
                 <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" />
                 <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce [animation-delay:150ms]" />
@@ -224,7 +233,7 @@ export default function AgentPage() {
       </div>
 
       {/* Input */}
-      <div className="bg-white border-t border-gray-200 p-4 shrink-0">
+      <div className="glass-card rounded-[1.75rem] border-t border-gray-200 p-4 shrink-0 mt-4">
         {activeDataset && (
           <div className="text-xs text-gray-400 mb-2 flex items-center gap-1.5">
             <span className="w-2 h-2 bg-emerald-400 rounded-full" />
@@ -243,13 +252,13 @@ export default function AgentPage() {
                 : "Select a dataset first, or ask me anything..."
             }
             rows={1}
-            className="flex-1 resize-none border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 max-h-32"
+            className="flex-1 resize-none border border-gray-200 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-sky-400 focus:ring-1 focus:ring-sky-100 max-h-32 bg-white/90"
             style={{ minHeight: "42px" }}
           />
           <button
             onClick={sendMessage}
             disabled={!input.trim() || sending}
-            className="bg-blue-600 text-white rounded-xl px-5 py-2.5 text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shrink-0"
+            className="bg-sky-600 text-white rounded-2xl px-5 py-3 text-sm font-medium hover:bg-sky-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shrink-0"
           >
             Send
           </button>
@@ -273,10 +282,10 @@ function MessageBubble({ message }: { message: ChatMessage }) {
       </div>
       <div className={`max-w-[75%] space-y-2`}>
         <div
-          className={`rounded-2xl px-4 py-3 text-sm leading-relaxed ${
+          className={`rounded-[1.4rem] px-4 py-3 text-sm leading-relaxed shadow-sm ${
             isUser
-              ? "bg-blue-600 text-white rounded-tr-sm"
-              : "bg-gray-100 text-gray-800 rounded-tl-sm"
+              ? "bg-sky-600 text-white rounded-tr-sm"
+              : "bg-slate-100 text-gray-800 rounded-tl-sm"
           }`}
         >
           {isUser ? (
@@ -336,12 +345,12 @@ function EmptyState({
       ];
 
   return (
-    <div className="flex flex-col items-center justify-center h-full text-center py-12">
-      <div className="text-5xl mb-4">🤖</div>
-      <h2 className="text-xl font-bold text-gray-900 mb-2">
+    <div className="flex flex-col items-center justify-center h-full text-center py-16">
+      <div className="mb-4 flex h-20 w-20 items-center justify-center rounded-[1.75rem] bg-sky-100 text-5xl">🤖</div>
+      <h2 className="font-display text-3xl font-bold text-gray-900 mb-2">
         Hi! I'm your ML co-pilot.
       </h2>
-      <p className="text-sm text-gray-500 mb-6 max-w-md">
+      <p className="text-sm text-gray-500 mb-6 max-w-2xl leading-7">
         {activeDataset
           ? `I can analyze "${activeDataset}", engineer features, train models, deploy, predict, and suggest improvements — all through conversation.`
           : "Select a dataset above, then tell me what you want to build. I'll handle the rest."}
@@ -351,7 +360,7 @@ function EmptyState({
           <button
             key={s}
             onClick={() => onQuickAction(s)}
-            className="text-xs bg-white border border-gray-200 rounded-full px-3 py-1.5 text-gray-600 hover:border-blue-300 hover:text-blue-600 transition-colors"
+            className="text-xs bg-white border border-gray-200 rounded-full px-4 py-2 text-gray-600 hover:border-sky-300 hover:text-sky-600 transition-colors"
           >
             {s}
           </button>

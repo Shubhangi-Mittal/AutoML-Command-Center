@@ -74,36 +74,40 @@ function UploadPageContent() {
   };
 
   return (
-    <div className="p-6 max-w-6xl mx-auto">
-      <h1 className="text-2xl font-bold text-gray-900 mb-1">Upload Dataset</h1>
-      <p className="text-gray-500 text-sm mb-6">
-        Upload a CSV file to get instant automated profiling
-      </p>
+    <div className="p-6 max-w-7xl mx-auto">
+      <div className="relative overflow-hidden rounded-[2rem] border border-slate-200/80 bg-[radial-gradient(circle_at_top_left,_rgba(14,165,233,0.16),_transparent_24%),radial-gradient(circle_at_bottom_right,_rgba(14,165,233,0.10),_transparent_18%),linear-gradient(135deg,_rgba(255,255,255,0.95),_rgba(247,250,252,0.9))] px-8 py-10 mb-8 shadow-[0_24px_70px_rgba(15,23,42,0.07)]">
+        <p className="text-xs font-semibold uppercase tracking-[0.28em] text-sky-600 mb-3">Data Intake</p>
+        <h1 className="font-display text-4xl font-bold text-gray-900 mb-3">Bring in a dataset and let the platform profile it instantly.</h1>
+        <p className="text-slate-600 text-sm md:text-base max-w-2xl leading-7">
+          Upload a CSV, inspect the suggested target, review quality warnings, and branch into experiments or the AI assistant once the profile is ready.
+        </p>
+      </div>
 
       {/* Drop zone */}
       <div
         onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
         onDragLeave={() => setDragging(false)}
         onDrop={handleDrop}
-        className={`border-2 border-dashed rounded-xl p-10 text-center transition-all mb-6 ${
+        className={`glass-card border-2 border-dashed rounded-[2rem] p-12 text-center transition-all mb-6 ${
           dragging
-            ? "border-blue-400 bg-blue-50"
-            : "border-gray-300 hover:border-gray-400 bg-white"
+            ? "border-sky-400 bg-sky-50/80"
+            : "border-slate-300 hover:border-sky-400 bg-white/70"
         }`}
       >
         {uploading ? (
           <div>
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto" />
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-3xl bg-sky-100 text-3xl">⏳</div>
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-sky-600 mx-auto mt-4" />
             <p className="mt-3 text-sm text-gray-600">Uploading and profiling...</p>
           </div>
         ) : (
           <>
-            <div className="text-4xl mb-3">📄</div>
-            <p className="text-sm text-gray-700 font-medium">
+            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-3xl bg-sky-100 text-3xl">📄</div>
+            <p className="font-display text-xl text-gray-800 font-semibold">
               Drag and drop a CSV file here
             </p>
-            <p className="text-xs text-gray-400 mt-1 mb-3">or</p>
-            <label className="inline-block bg-blue-600 text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-blue-700 cursor-pointer">
+            <p className="text-sm text-gray-500 mt-2 mb-5">Clean CSVs work best. We’ll profile the file right after upload.</p>
+            <label className="inline-block rounded-2xl bg-sky-600 text-white text-sm font-medium px-5 py-3 hover:bg-sky-700 cursor-pointer">
               Browse Files
               <input
                 type="file"
@@ -117,15 +121,15 @@ function UploadPageContent() {
       </div>
 
       {error && (
-        <div className="bg-red-50 text-red-700 text-sm p-3 rounded-lg mb-6 border border-red-200">
+        <div className="bg-red-50 text-red-700 text-sm p-3 rounded-2xl mb-6 border border-red-200">
           {error}
         </div>
       )}
 
       {/* Existing datasets */}
       {!dataset && datasets.length > 0 && (
-        <div className="bg-white rounded-lg border border-gray-200 p-4 mb-6">
-          <h3 className="text-sm font-semibold text-gray-700 mb-3">
+        <div className="glass-card rounded-[1.75rem] p-5 mb-6">
+          <h3 className="font-display text-lg font-semibold text-gray-800 mb-4">
             Or select an existing dataset:
           </h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
@@ -133,9 +137,9 @@ function UploadPageContent() {
               <button
                 key={ds.id}
                 onClick={() => api.getDataset(ds.id).then(setDataset).catch(() => setDataset(ds))}
-                className="flex items-center gap-3 p-3 rounded-lg border border-gray-100 hover:border-blue-300 hover:bg-blue-50 transition-all text-left"
+                className="flex items-center gap-3 p-4 rounded-2xl border border-gray-100 hover:border-sky-300 hover:bg-sky-50/70 transition-all text-left"
               >
-                <span>📄</span>
+                <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-100">📄</span>
                 <div>
                   <p className="text-sm font-medium text-gray-900">{ds.name}</p>
                   <p className="text-xs text-gray-500">
@@ -163,7 +167,7 @@ function ProfileViewer({ dataset, versions }: { dataset: Dataset; versions: Data
   return (
     <div className="space-y-6">
       {/* Summary */}
-      <div className="bg-white rounded-lg border border-gray-200 p-5">
+      <div className="glass-card rounded-[1.75rem] p-6">
         <h2 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
           <span>📊</span> Dataset Profile: {dataset.name}
         </h2>
@@ -191,7 +195,7 @@ function ProfileViewer({ dataset, versions }: { dataset: Dataset; versions: Data
       </div>
 
       {versions.length > 1 && (
-        <div className="bg-white rounded-lg border border-gray-200 p-5">
+        <div className="glass-card rounded-[1.75rem] p-5">
           <h3 className="font-semibold text-gray-900 mb-3">Dataset Version History</h3>
           <div className="space-y-2">
             {versions.map((version) => (
@@ -213,7 +217,7 @@ function ProfileViewer({ dataset, versions }: { dataset: Dataset; versions: Data
 
       {/* Warnings */}
       {warnings.length > 0 && (
-        <div className="bg-amber-50 rounded-lg border border-amber-200 p-4">
+        <div className="rounded-[1.5rem] border border-amber-200 bg-amber-50 p-5">
           <h3 className="font-semibold text-amber-800 text-sm mb-2">
             ⚠️ Data Quality Warnings
           </h3>
@@ -244,7 +248,7 @@ function ProfileViewer({ dataset, versions }: { dataset: Dataset; versions: Data
 
       {/* Top correlations */}
       {correlations.length > 0 && (
-        <div className="bg-white rounded-lg border border-gray-200 p-5">
+        <div className="glass-card rounded-[1.75rem] p-5">
           <h3 className="font-semibold text-gray-900 mb-3">
             Top Correlations
           </h3>
@@ -296,7 +300,7 @@ function ColumnCard({
 
   return (
     <div
-      className={`bg-white rounded-lg border p-4 ${
+      className={`glass-card rounded-[1.5rem] border p-4 ${
         isTarget ? "border-blue-300 ring-1 ring-blue-100" : "border-gray-200"
       }`}
     >
