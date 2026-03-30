@@ -109,6 +109,116 @@ export default function ExperimentsPage() {
         </div>
       </div>
 
+      {!selectedDataset && (
+        <div className="space-y-6 mb-6">
+          {datasets.length > 0 ? (
+            <>
+              <div className="relative overflow-hidden rounded-3xl border border-slate-200 bg-[radial-gradient(circle_at_top_left,_rgba(14,165,233,0.18),_transparent_35%),radial-gradient(circle_at_bottom_right,_rgba(16,185,129,0.16),_transparent_30%),linear-gradient(135deg,_#f8fafc_0%,_#ffffff_55%,_#f0fdf4_100%)] p-8">
+                <div className="max-w-3xl">
+                  <p className="text-xs font-semibold uppercase tracking-[0.28em] text-sky-600 mb-3">
+                    Experiment Lab
+                  </p>
+                  <h2 className="text-3xl font-bold text-slate-900 mb-3">
+                    Pick a dataset and turn it into a real model comparison.
+                  </h2>
+                  <p className="text-sm leading-6 text-slate-600 mb-6">
+                    Launch baseline models, enable cross-validation, try lightweight tuning, then export a report once you find a winner.
+                  </p>
+                  <div className="flex flex-wrap gap-3">
+                    {datasets.slice(0, 3).map((ds) => (
+                      <button
+                        key={ds.id}
+                        onClick={() => { setSelectedDataset(ds); setTrainResult(null); setSelectedExp(null); }}
+                        className="rounded-full border border-slate-300 bg-white/80 px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:border-sky-300 hover:text-sky-700"
+                      >
+                        Start with {ds.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-[1.3fr_0.7fr] gap-6">
+                <div className="bg-white rounded-2xl border border-gray-200 p-5">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-sm font-semibold text-gray-800">Available Datasets</h3>
+                    <span className="text-xs text-gray-400">{datasets.length} ready</span>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {datasets.map((ds) => (
+                      <button
+                        key={ds.id}
+                        onClick={() => { setSelectedDataset(ds); setTrainResult(null); setSelectedExp(null); }}
+                        className="rounded-2xl border border-gray-200 bg-white px-4 py-4 text-left transition hover:-translate-y-0.5 hover:border-sky-300 hover:shadow-md"
+                      >
+                        <div className="flex items-start justify-between gap-3 mb-3">
+                          <div>
+                            <p className="text-sm font-semibold text-gray-900">{ds.name}</p>
+                            <p className="text-xs text-gray-500 mt-1">
+                              {ds.rows?.toLocaleString() || "?"} rows x {ds.columns || "?"} columns
+                            </p>
+                          </div>
+                          <span className={`rounded-full px-2 py-1 text-[11px] font-medium ${
+                            ds.task_type === "regression"
+                              ? "bg-amber-100 text-amber-700"
+                              : "bg-emerald-100 text-emerald-700"
+                          }`}>
+                            {ds.task_type || "unknown"}
+                          </span>
+                        </div>
+                        <div className="space-y-1 text-xs text-gray-500">
+                          <p>Target: <strong className="text-gray-700">{ds.target_column || "Not set"}</strong></p>
+                          {ds.version_metadata?.version && (
+                            <p>Version: <strong className="text-gray-700">v{ds.version_metadata.version}</strong></p>
+                          )}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="bg-slate-950 text-slate-50 rounded-2xl p-5">
+                    <p className="text-xs uppercase tracking-[0.22em] text-sky-300 mb-3">What You Can Do Here</p>
+                    <div className="space-y-3 text-sm text-slate-200">
+                      <p>Train multiple baselines side by side.</p>
+                      <p>Use cross-validation for stronger evidence.</p>
+                      <p>Enable tuning to search for better settings.</p>
+                      <p>Compare feature importance and export a report.</p>
+                    </div>
+                  </div>
+                  <div className="bg-white rounded-2xl border border-gray-200 p-5">
+                    <h3 className="text-sm font-semibold text-gray-800 mb-3">Suggested Workflow</h3>
+                    <ol className="space-y-2 text-sm text-gray-600">
+                      <li>1. Pick a dataset with a target column already detected.</li>
+                      <li>2. Start with all 3 model families.</li>
+                      <li>3. Turn on 3-fold CV for a better comparison.</li>
+                      <li>4. Add tuning if the baseline results are close.</li>
+                    </ol>
+                  </div>
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="rounded-3xl border border-dashed border-gray-300 bg-gradient-to-br from-white via-slate-50 to-sky-50 p-10 text-center">
+              <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-sky-100 text-2xl">
+                🧪
+              </div>
+              <h2 className="text-2xl font-bold text-gray-900 mb-2">No datasets yet</h2>
+              <p className="max-w-xl mx-auto text-sm leading-6 text-gray-600 mb-6">
+                The experiments workspace comes alive once you upload data. After that, you can benchmark models, run cross-validation, tune settings, and export reports from one place.
+              </p>
+              <a
+                href="/upload"
+                className="inline-flex items-center rounded-xl bg-sky-600 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-sky-700"
+              >
+                Upload Your First Dataset
+              </a>
+            </div>
+          )}
+        </div>
+      )}
+
       {selectedDataset && (
         <>
           {/* Training launcher */}
