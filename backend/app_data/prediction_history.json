@@ -1,0 +1,32 @@
+{
+  "predictions": [
+    {
+      "dataset_id": "37e5a8be-ffbd-455a-a42b-67ffd01729f0",
+      "job_id": "a69b92d0-f563-4775-bf2c-506210586505",
+      "model_type": "linear",
+      "features": {
+        "User_ID": 275,
+        "Age": 23,
+        "Gender": "Female",
+        "Height_cm": 169.35532512087542,
+        "Initial_Weight_kg": 111.48532989231006,
+        "Stress_Level": 10,
+        "Sleep_Hours": 7.016452525420302,
+        "Caffeine_mg": 211.42646882269187,
+        "Calories_Consumed": 2801.7642911138546,
+        "Protein_g": 175.1,
+        "Carbs_g": 315.2,
+        "Fat_g": 93.4,
+        "Steps": 8172,
+        "Workout_Type": "Strength",
+        "Workout_Intensity": 6,
+        "Temp_C": 18.823955081095367,
+        "Weight_Change": 0.3171579950306528
+      },
+      "prediction": [
+        3167.851405453993
+      ],
+      "created_at": "2026-03-30T21:21:01.588653+00:00"
+    }
+  ]
+}
