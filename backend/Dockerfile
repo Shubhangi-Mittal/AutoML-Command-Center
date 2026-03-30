@@ -10,7 +10,12 @@ RUN pip install --no-cache-dir -r requirements.txt supervisor
 
 COPY . .
 
-RUN mkdir -p /tmp/uploads /tmp/models
+ENV PORT=8000
+ENV APP_DATA_DIR=/tmp/app_data
+ENV UPLOAD_DIR=/tmp/uploads
+ENV MODEL_DIR=/tmp/models
+
+RUN mkdir -p /tmp/app_data /tmp/uploads /tmp/models
 
 COPY supervisord.conf /etc/supervisord.conf
 

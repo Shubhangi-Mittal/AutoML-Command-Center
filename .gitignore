@@ -20,6 +20,7 @@ out/
 *.pkl
 uploads/
 models/
+app_data/
 *.db
 
 # OS
