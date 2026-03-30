@@ -1,7 +1,14 @@
 "use client";
 import { useState, useEffect } from "react";
 import { api } from "@/lib/api";
-import { Dataset, PredictionTemplate, ServingStatus, TrainingJob } from "@/types";
+import {
+  Dataset,
+  PredictionExplanation,
+  PredictionHistoryItem,
+  PredictionTemplate,
+  ServingStatus,
+  TrainingJob,
+} from "@/types";
 
 export default function DeployPage() {
   const [status, setStatus] = useState<ServingStatus | null>(null);
@@ -13,6 +20,8 @@ export default function DeployPage() {
   const [featureInput, setFeatureInput] = useState("{}");
   const [prediction, setPrediction] = useState<any>(null);
   const [template, setTemplate] = useState<PredictionTemplate | null>(null);
+  const [explanation, setExplanation] = useState<PredictionExplanation | null>(null);
+  const [history, setHistory] = useState<PredictionHistoryItem[]>([]);
   const [error, setError] = useState("");
   const [deployError, setDeployError] = useState("");
 
@@ -27,9 +36,11 @@ export default function DeployPage() {
         setJobs(j.filter((job: TrainingJob) => job.status === "completed"));
       }).catch(() => {});
       api.getPredictionTemplate(selectedDataset).then(setTemplate).catch(() => setTemplate(null));
+      api.predictionHistory(selectedDataset).then((result) => setHistory(result.predictions || [])).catch(() => setHistory([]));
     } else {
       setJobs([]);
       setTemplate(null);
+      setHistory([]);
     }
   }, [selectedDataset]);
 
@@ -64,6 +75,11 @@ export default function DeployPage() {
       const features = JSON.parse(featureInput);
       const result = await api.predict(features);
       setPrediction(result);
+      const explain = await api.explainPrediction(features, 5).catch(() => null);
+      setExplanation(explain);
+      if (selectedDataset) {
+        api.predictionHistory(selectedDataset).then((response) => setHistory(response.predictions || [])).catch(() => {});
+      }
     } catch (e: any) {
       setError(e.message || "Invalid JSON or prediction failed");
     } finally {
@@ -82,6 +98,17 @@ export default function DeployPage() {
     if (!template) return;
     setFeatureInput(JSON.stringify(template.sample_input, null, 2));
     setError("");
+  }
+
+  function downloadSampleInput() {
+    if (!template) return;
+    const blob = new Blob([JSON.stringify(template.sample_input, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `${template.dataset_name}-sample-input.json`;
+    anchor.click();
+    URL.revokeObjectURL(url);
   }
 
   return (
@@ -117,6 +144,9 @@ export default function DeployPage() {
                     .map(([k, v]) => `${k}=${(v as number).toFixed(4)}`)
                     .join(", ")}</p>
                 )}
+                <p>Predictions served: <strong>{status.prediction_count ?? 0}</strong></p>
+                <p>Average latency: <strong>{status.avg_latency_ms?.toFixed?.(2) ?? status.avg_latency_ms ?? 0} ms</strong></p>
+                {status.last_prediction_at && <p>Last prediction: <strong>{status.last_prediction_at}</strong></p>}
                 {status.deployed_at && <p className="text-xs text-gray-400">Deployed: {status.deployed_at}</p>}
               </div>
             )}
@@ -206,6 +236,12 @@ export default function DeployPage() {
               >
                 Load Sample JSON
               </button>
+              <button
+                onClick={downloadSampleInput}
+                className="text-xs font-medium text-blue-700 hover:text-blue-900"
+              >
+                Download JSON
+              </button>
             </div>
           )}
 
@@ -259,6 +295,37 @@ export default function DeployPage() {
               </div>
             </div>
           )}
+
+          {explanation && explanation.top_contributors.length > 0 && (
+            <div className="mt-4 bg-white rounded-lg border border-gray-200 p-4">
+              <h4 className="text-sm font-semibold text-gray-800 mb-2">Prediction Explanation</h4>
+              <div className="space-y-2">
+                {explanation.top_contributors.map((item) => (
+                  <div key={item.feature} className="flex items-center justify-between text-sm">
+                    <span className="text-gray-700">{item.feature}</span>
+                    <span className="font-mono text-gray-500">
+                      impact={item.impact.toFixed(4)} · value={String(item.value)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {history.length > 0 && (
+        <div className="bg-white rounded-lg border border-gray-200 p-5 mb-6">
+          <h3 className="text-sm font-semibold text-gray-700 mb-3">Recent Prediction History</h3>
+          <div className="space-y-2">
+            {history.slice(0, 5).map((item, index) => (
+              <div key={`${item.created_at}-${index}`} className="rounded-lg border border-gray-100 px-3 py-2 text-xs">
+                <p className="text-gray-500">{item.created_at || "Unknown time"}</p>
+                <p className="text-gray-700">Prediction: <strong>{JSON.stringify(item.prediction)}</strong></p>
+                <p className="text-gray-500 truncate">Input: {JSON.stringify(item.features)}</p>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 

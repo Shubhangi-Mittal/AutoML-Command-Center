@@ -56,6 +56,9 @@ def train_single_model_task(
     task_type: str,
     model_type: str,
     hyperparameters: dict = None,
+    optimization_metric: str = None,
+    cv_folds: int = 1,
+    tune_hyperparameters: bool = False,
 ):
     """Celery task to train a single model asynchronously."""
     db = SessionLocal()
@@ -82,6 +85,9 @@ def train_single_model_task(
         result = train_model(
             X_train, X_test, y_train, y_test,
             model_type, task_type, hyperparameters or {}, artifact_id=job_id,
+            optimization_metric=optimization_metric,
+            cv_folds=cv_folds,
+            tune_hyperparameters=tune_hyperparameters,
         )
 
         _publish_progress(dataset_id, job_id, model_type, "running", "Saving results...")

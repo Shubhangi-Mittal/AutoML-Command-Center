@@ -34,6 +34,7 @@ export const api = {
   listDatasets: () => request<any[]>("/api/datasets/"),
 
   getDataset: (id: string) => request<any>(`/api/datasets/${id}`),
+  getDatasetVersions: (id: string) => request<any>(`/api/datasets/${id}/versions`),
 
   // Training
   launchTraining: (body: {
@@ -42,6 +43,8 @@ export const api = {
     optimization_metric?: string;
     target_column?: string;
     task_type?: string;
+    cv_folds?: number;
+    tune_hyperparameters?: boolean;
   }) =>
     request<any>("/api/training/launch", {
       method: "POST",
@@ -65,6 +68,22 @@ export const api = {
 
   compareModels: (experimentId: string) =>
     request<any>(`/api/experiments/${experimentId}/compare`),
+  updateExperimentMetadata: (
+    experimentId: string,
+    body: {
+      name?: string;
+      tags?: string[];
+      favorite?: boolean;
+      archived?: boolean;
+      notes?: string;
+    }
+  ) =>
+    request<any>(`/api/experiments/${experimentId}/metadata`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+  getExperimentReport: (experimentId: string) =>
+    request<any>(`/api/experiments/${experimentId}/report`),
 
   // Agent
   chat: (message: string, sessionId?: string, datasetId?: string) =>
@@ -98,10 +117,17 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ features }),
     }),
+  explainPrediction: (features: Record<string, any>, topK = 5) =>
+    request<any>("/api/serving/explain", {
+      method: "POST",
+      body: JSON.stringify({ features, top_k: topK }),
+    }),
 
   servingStatus: () => request<any>("/api/serving/status"),
   getPredictionTemplate: (datasetId: string) =>
     request<any>(`/api/serving/template/${datasetId}`),
+  predictionHistory: (datasetId?: string) =>
+    request<any>(`/api/serving/history${datasetId ? `?dataset_id=${datasetId}` : ""}`),
 
   // Health
   health: () => request<any>("/health"),

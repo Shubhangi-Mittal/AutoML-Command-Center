@@ -2,7 +2,7 @@
 import { useState, useCallback, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
-import { Dataset, ColumnProfile } from "@/types";
+import { Dataset, ColumnProfile, DatasetVersionMetadata } from "@/types";
 
 export default function UploadPage() {
   return (
@@ -21,6 +21,7 @@ function UploadPageContent() {
   const [error, setError] = useState("");
   const [dataset, setDataset] = useState<Dataset | null>(null);
   const [datasets, setDatasets] = useState<Dataset[]>([]);
+  const [versions, setVersions] = useState<DatasetVersionMetadata[]>([]);
 
   useEffect(() => {
     api.listDatasets().then(setDatasets).catch(() => {});
@@ -28,6 +29,16 @@ function UploadPageContent() {
       api.getDataset(preselectedId).then(setDataset).catch(() => {});
     }
   }, [preselectedId]);
+
+  useEffect(() => {
+    if (!dataset?.id) {
+      setVersions([]);
+      return;
+    }
+    api.getDatasetVersions(dataset.id)
+      .then((result) => setVersions(result.versions || []))
+      .catch(() => setVersions([]));
+  }, [dataset?.id]);
 
   const handleUpload = useCallback(async (file: File) => {
     if (!file.name.endsWith(".csv")) {
@@ -138,12 +149,12 @@ function UploadPageContent() {
       )}
 
       {/* Profile viewer */}
-      {dataset?.profile && <ProfileViewer dataset={dataset} />}
+      {dataset?.profile && <ProfileViewer dataset={dataset} versions={versions} />}
     </div>
   );
 }
 
-function ProfileViewer({ dataset }: { dataset: Dataset }) {
+function ProfileViewer({ dataset, versions }: { dataset: Dataset; versions: DatasetVersionMetadata[] }) {
   const profile = dataset.profile!;
   const columns = profile.columns || {};
   const warnings = profile.warnings || [];
@@ -172,7 +183,33 @@ function ProfileViewer({ dataset }: { dataset: Dataset }) {
             Suggested task: {profile.suggested_task_type}
           </div>
         )}
+        {dataset.version_metadata?.version && (
+          <div className="mt-2 text-xs text-gray-500">
+            Dataset version: <strong>v{dataset.version_metadata.version}</strong>
+          </div>
+        )}
       </div>
+
+      {versions.length > 1 && (
+        <div className="bg-white rounded-lg border border-gray-200 p-5">
+          <h3 className="font-semibold text-gray-900 mb-3">Dataset Version History</h3>
+          <div className="space-y-2">
+            {versions.map((version) => (
+              <div
+                key={version.dataset_id}
+                className={`rounded-lg border px-3 py-2 text-sm ${
+                  version.dataset_id === dataset.id ? "border-blue-300 bg-blue-50" : "border-gray-200"
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="font-medium text-gray-800">v{version.version}</span>
+                  <span className="text-xs text-gray-500">{version.dataset_id.slice(0, 8)}...</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Warnings */}
       {warnings.length > 0 && (

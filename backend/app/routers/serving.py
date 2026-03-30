@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.dataset import Dataset
 from app.models.job import TrainingJob
+from app.services.project_metadata import metadata_store
 from app.services.serving import ModelServer
 from app.services.trainer import resolve_model_artifact
 
@@ -24,6 +25,11 @@ class PredictionRequest(BaseModel):
 
 class BatchPredictionRequest(BaseModel):
     records: List[Dict[str, Any]]
+
+
+class ExplainRequest(BaseModel):
+    features: Dict[str, Any]
+    top_k: int = 5
 
 
 @router.post("/deploy")
@@ -60,7 +66,17 @@ def undeploy_model():
 def predict(request: PredictionRequest):
     server = ModelServer.get_instance()
     try:
-        return server.predict(request.features)
+        result = server.predict(request.features)
+        status = server.get_status()
+        metadata_store.log_prediction({
+            "dataset_id": status.get("dataset_id"),
+            "job_id": status.get("job_id"),
+            "model_type": status.get("model_type"),
+            "features": request.features,
+            "prediction": result.get("prediction"),
+            "created_at": status.get("last_prediction_at"),
+        })
+        return result
     except RuntimeError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -70,6 +86,15 @@ def predict_batch(request: BatchPredictionRequest):
     server = ModelServer.get_instance()
     try:
         return server.predict_batch(request.records)
+    except RuntimeError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/explain")
+def explain_prediction(request: ExplainRequest):
+    server = ModelServer.get_instance()
+    try:
+        return server.explain_prediction(request.features, top_k=request.top_k)
     except RuntimeError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -89,6 +114,11 @@ def serving_status(db: Session = Depends(get_db)):
                 status["target_column"] = dataset.target_column
 
     return status
+
+
+@router.get("/history")
+def prediction_history(dataset_id: str | None = None):
+    return {"predictions": metadata_store.list_predictions(dataset_id)}
 
 
 @router.get("/template/{dataset_id}")

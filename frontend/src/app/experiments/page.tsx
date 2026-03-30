@@ -12,6 +12,8 @@ export default function ExperimentsPage() {
   const [trainResult, setTrainResult] = useState<TrainResult | null>(null);
   const [modelTypes, setModelTypes] = useState(["linear", "xgboost", "random_forest"]);
   const [metric, setMetric] = useState("f1");
+  const [cvFolds, setCvFolds] = useState(1);
+  const [tuneHyperparameters, setTuneHyperparameters] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -42,6 +44,8 @@ export default function ExperimentsPage() {
         dataset_id: selectedDataset.id,
         model_types: modelTypes,
         optimization_metric: metric,
+        cv_folds: cvFolds,
+        tune_hyperparameters: tuneHyperparameters,
       });
       setTrainResult(result);
       api.listExperiments(selectedDataset.id).then(setExperiments).catch(() => {});
@@ -52,6 +56,21 @@ export default function ExperimentsPage() {
       setError(e.message);
     } finally {
       setTraining(false);
+    }
+  }
+
+  async function downloadReport(experimentId: string) {
+    try {
+      const result = await api.getExperimentReport(experimentId);
+      const blob = new Blob([result.markdown], { type: "text/markdown;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `experiment-${experimentId}.md`;
+      anchor.click();
+      URL.revokeObjectURL(url);
+    } catch (e: any) {
+      setError(e.message || "Failed to export report");
     }
   }
 
@@ -139,6 +158,27 @@ export default function ExperimentsPage() {
                 </select>
               </div>
               <div>
+                <label className="text-xs text-gray-500 block mb-1">Cross-Validation</label>
+                <select
+                  value={cvFolds}
+                  onChange={(e) => setCvFolds(Number(e.target.value))}
+                  className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm"
+                >
+                  <option value={1}>Off</option>
+                  <option value={3}>3 folds</option>
+                  <option value={5}>5 folds</option>
+                </select>
+              </div>
+              <label className="flex items-center gap-2 text-sm text-gray-700">
+                <input
+                  type="checkbox"
+                  checked={tuneHyperparameters}
+                  onChange={(e) => setTuneHyperparameters(e.target.checked)}
+                  className="rounded"
+                />
+                Tune hyperparameters
+              </label>
+              <div>
                 <p className="text-xs text-gray-500 mb-1">Target: <strong>{selectedDataset.target_column || "Not set"}</strong></p>
                 <p className="text-xs text-gray-500">Task: <strong>{selectedDataset.task_type || "Not set"}</strong></p>
               </div>
@@ -183,11 +223,18 @@ export default function ExperimentsPage() {
                       <p className="text-xs text-gray-500">
                         {exp.status} · Optimized for {exp.optimization_metric}
                       </p>
+                      {exp.tags && exp.tags.length > 0 && (
+                        <p className="text-xs text-gray-400 mt-1">{exp.tags.join(", ")}</p>
+                      )}
                     </div>
                     <span className={`text-xs px-2 py-0.5 rounded-full ${
-                      exp.status === "completed" ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-600"
+                      exp.archived
+                        ? "bg-amber-100 text-amber-700"
+                        : exp.status === "completed"
+                        ? "bg-emerald-100 text-emerald-700"
+                        : "bg-gray-100 text-gray-600"
                     }`}>
-                      {exp.status}
+                      {exp.archived ? "archived" : exp.status}
                     </span>
                   </button>
                 ))}
@@ -196,7 +243,13 @@ export default function ExperimentsPage() {
           )}
 
           {/* Selected experiment detail */}
-          {selectedExp && <ExperimentDetail data={selectedExp} taskType={selectedDataset.task_type || "classification"} />}
+          {selectedExp && (
+            <ExperimentDetail
+              data={selectedExp}
+              taskType={selectedDataset.task_type || "classification"}
+              onDownloadReport={downloadReport}
+            />
+          )}
         </>
       )}
     </div>
@@ -225,6 +278,9 @@ function TrainResults({ result, taskType }: { result: TrainResult; taskType: str
         <p className="text-xs text-gray-500 mt-2">
           {result.feature_engineering.feature_count} features · {result.feature_engineering.train_size} train / {result.feature_engineering.test_size} test samples
         </p>
+        <p className="text-xs text-gray-500 mt-1">
+          CV folds: {result.cv_folds || 1} · Hyperparameter tuning: {result.tune_hyperparameters ? "On" : "Off"}
+        </p>
       </div>
 
       {/* Comparison table */}
@@ -251,7 +307,7 @@ function TrainResults({ result, taskType }: { result: TrainResult; taskType: str
                   >
                     <td className="py-2 px-3 font-medium text-gray-900">{r.model_type}</td>
                     {metricKeys.map((k) => (
-                      <td key={k} className="text-right py-2 px-3 font-mono text-gray-700">
+                    <td key={k} className="text-right py-2 px-3 font-mono text-gray-700">
                         {r.metrics?.[k]?.toFixed(4) ?? "—"}
                       </td>
                     ))}
@@ -311,23 +367,99 @@ function TrainResults({ result, taskType }: { result: TrainResult; taskType: str
           </div>
         </div>
       )}
+
+      {jobs.some((job) => job.cross_validation) && (
+        <div className="mt-6">
+          <h4 className="text-xs font-semibold text-gray-600 mb-3">Cross-Validation Summary</h4>
+          <div className="space-y-2">
+            {jobs.map((job) => (
+              <div key={job.job_id} className="rounded-lg border border-gray-100 px-3 py-2 text-xs text-gray-600">
+                <strong className="text-gray-800">{job.model_type}</strong>:{" "}
+                {job.cross_validation
+                  ? Object.entries(job.cross_validation).map(([key, value]) => `${key}=${value}`).join(", ")
+                  : "No CV run"}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-function ExperimentDetail({ data, taskType }: { data: any; taskType: string }) {
+function ExperimentDetail({
+  data,
+  taskType,
+  onDownloadReport,
+}: {
+  data: any;
+  taskType: string;
+  onDownloadReport: (experimentId: string) => void;
+}) {
   const jobs: TrainingJob[] = data.jobs || [];
   const completed = jobs;
   const isClassification = taskType === "classification";
   const metricKeys = isClassification
     ? ["accuracy", "f1", "precision", "recall"]
     : ["r2", "rmse", "mae"];
+  const [draftName, setDraftName] = useState(data.name || "");
+  const [draftTags, setDraftTags] = useState((data.tags || []).join(", "));
+  const [favorite, setFavorite] = useState(Boolean(data.favorite));
+  const [archived, setArchived] = useState(Boolean(data.archived));
+
+  async function saveMetadata() {
+    await api.updateExperimentMetadata(data.experiment_id, {
+      name: draftName,
+      tags: draftTags.split(",").map((tag: string) => tag.trim()).filter(Boolean),
+      favorite,
+      archived,
+    }).catch(() => {});
+  }
 
   return (
     <div className="bg-white rounded-lg border border-gray-200 p-5 mb-6">
       <h3 className="text-sm font-semibold text-gray-700 mb-4">
         {data.name || "Experiment Detail"}
       </h3>
+      <div className="flex flex-wrap gap-2 mb-4">
+        <button
+          onClick={() => onDownloadReport(data.experiment_id)}
+          className="text-xs font-medium text-blue-700 hover:text-blue-900"
+        >
+          Export Markdown Report
+        </button>
+        {data.tags && data.tags.length > 0 && (
+          <span className="text-xs text-gray-500">Tags: {data.tags.join(", ")}</span>
+        )}
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
+        <input
+          value={draftName}
+          onChange={(e) => setDraftName(e.target.value)}
+          placeholder="Experiment name"
+          className="border border-gray-200 rounded-lg px-3 py-2 text-sm"
+        />
+        <input
+          value={draftTags}
+          onChange={(e) => setDraftTags(e.target.value)}
+          placeholder="Tags, comma separated"
+          className="border border-gray-200 rounded-lg px-3 py-2 text-sm"
+        />
+        <label className="flex items-center gap-2 text-sm text-gray-700">
+          <input type="checkbox" checked={favorite} onChange={(e) => setFavorite(e.target.checked)} className="rounded" />
+          Favorite
+        </label>
+        <label className="flex items-center gap-2 text-sm text-gray-700">
+          <input type="checkbox" checked={archived} onChange={(e) => setArchived(e.target.checked)} className="rounded" />
+          Archived
+        </label>
+      </div>
+      <button
+        onClick={saveMetadata}
+        className="text-xs font-medium text-blue-700 hover:text-blue-900 mb-4"
+      >
+        Save Experiment Metadata
+      </button>
 
       {completed.length > 0 && (
         <>

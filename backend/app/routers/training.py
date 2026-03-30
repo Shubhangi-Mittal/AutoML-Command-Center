@@ -28,6 +28,8 @@ class TrainRequest(BaseModel):
     model_types: Optional[List[str]] = None
     experiment_id: Optional[str] = None
     optimization_metric: Optional[str] = None
+    cv_folds: Optional[int] = 1
+    tune_hyperparameters: Optional[bool] = False
     async_mode: Optional[bool] = False
 
 
@@ -60,13 +62,23 @@ def launch_training(request: TrainRequest, db: Session = Depends(get_db)):
 
     # Async mode: dispatch to Celery
     if request.async_mode:
-        return _launch_async(dataset, target_col, task_type, model_types, experiment_id, db)
+        return _launch_async(
+            dataset, target_col, task_type, model_types, experiment_id, db,
+            optimization_metric=request.optimization_metric,
+            cv_folds=request.cv_folds or 1,
+            tune_hyperparameters=bool(request.tune_hyperparameters),
+        )
 
     # Sync mode: train immediately (default for simplicity)
-    return _launch_sync(dataset, target_col, task_type, model_types, experiment_id, db)
+    return _launch_sync(
+        dataset, target_col, task_type, model_types, experiment_id, db,
+        optimization_metric=request.optimization_metric,
+        cv_folds=request.cv_folds or 1,
+        tune_hyperparameters=bool(request.tune_hyperparameters),
+    )
 
 
-def _launch_async(dataset, target_col, task_type, model_types, experiment_id, db):
+def _launch_async(dataset, target_col, task_type, model_types, experiment_id, db, optimization_metric, cv_folds, tune_hyperparameters):
     """Create pending jobs and dispatch Celery tasks."""
     from app.tasks.training_tasks import train_single_model_task
 
@@ -90,6 +102,9 @@ def _launch_async(dataset, target_col, task_type, model_types, experiment_id, db
             target_col=target_col,
             task_type=task_type,
             model_type=model_type,
+            optimization_metric=optimization_metric,
+            cv_folds=cv_folds,
+            tune_hyperparameters=tune_hyperparameters,
         )
 
         jobs.append({
@@ -104,19 +119,27 @@ def _launch_async(dataset, target_col, task_type, model_types, experiment_id, db
         "experiment_id": experiment_id,
         "task_type": task_type,
         "target_column": target_col,
+        "optimization_metric": optimization_metric or ("f1" if task_type == "classification" else "rmse"),
+        "cv_folds": cv_folds,
+        "tune_hyperparameters": tune_hyperparameters,
         "async": True,
         "jobs": jobs,
     }
 
 
-def _launch_sync(dataset, target_col, task_type, model_types, experiment_id, db):
+def _launch_sync(dataset, target_col, task_type, model_types, experiment_id, db, optimization_metric, cv_folds, tune_hyperparameters):
     """Train all models synchronously and return results."""
     df = pd.read_csv(dataset.file_path, encoding="utf-8-sig")
 
     engine = FeatureEngine(df, target_col, task_type)
     X_train, X_test, y_train, y_test, metadata = engine.auto_engineer()
 
-    results = train_all_models(X_train, X_test, y_train, y_test, task_type, model_types)
+    results = train_all_models(
+        X_train, X_test, y_train, y_test, task_type, model_types,
+        optimization_metric=optimization_metric,
+        cv_folds=cv_folds,
+        tune_hyperparameters=tune_hyperparameters,
+    )
 
     jobs = []
     for result in results:
@@ -164,6 +187,8 @@ def _launch_sync(dataset, target_col, task_type, model_types, experiment_id, db)
         "target_column": target_col,
         "best_job_id": best_job_id,
         "optimization_metric": optimization_metric,
+        "cv_folds": cv_folds,
+        "tune_hyperparameters": tune_hyperparameters,
         "async": False,
         "feature_engineering": metadata,
         "jobs": jobs,

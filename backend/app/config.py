@@ -7,6 +7,7 @@ class Settings(BaseSettings):
 	MLFLOW_TRACKING_URI: str = "http://localhost:5000"
 	ANTHROPIC_API_KEY: str = ""
 	GROQ_API_KEY: str = ""
+	APP_DATA_DIR: str = "./app_data"
 	UPLOAD_DIR: str = "./uploads"
 	MODEL_DIR: str = "./models"
 	MAX_UPLOAD_SIZE_MB: int = 100

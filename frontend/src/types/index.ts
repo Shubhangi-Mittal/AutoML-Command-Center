@@ -8,6 +8,17 @@ export interface Dataset {
   target_column: string | null;
   task_type: string | null;
   created_at: string;
+  version_metadata?: DatasetVersionMetadata;
+}
+
+export interface DatasetVersionMetadata {
+  dataset_id: string;
+  dataset_name: string;
+  family_key: string;
+  version: number;
+  previous_dataset_id?: string | null;
+  file_hash?: string;
+  created_at?: string;
 }
 
 export interface DataProfile {
@@ -81,6 +92,10 @@ export interface Experiment {
   optimization_metric?: string;
   best_job_id?: string;
   created_at: string;
+  tags?: string[];
+  favorite?: boolean;
+  archived?: boolean;
+  notes?: string;
 }
 
 export interface TrainResult {
@@ -90,6 +105,8 @@ export interface TrainResult {
   target_column: string;
   best_job_id?: string;
   optimization_metric?: string;
+  cv_folds?: number;
+  tune_hyperparameters?: boolean;
   feature_engineering: {
     transformations: string[];
     feature_count: number;
@@ -104,6 +121,8 @@ export interface TrainResult {
     feature_importance?: Record<string, number>;
     training_duration_seconds: number;
     model_path?: string;
+    cross_validation?: Record<string, number>;
+    hyperparameters?: Record<string, any>;
   }[];
 }
 
@@ -123,6 +142,9 @@ export interface ServingStatus {
   model_type?: string;
   metrics?: Record<string, number>;
   deployed_at?: string;
+  prediction_count?: number;
+  avg_latency_ms?: number;
+  last_prediction_at?: string;
 }
 
 export interface PredictionTemplate {
@@ -132,4 +154,23 @@ export interface PredictionTemplate {
   task_type: string | null;
   feature_columns: string[];
   sample_input: Record<string, any>;
+}
+
+export interface PredictionExplanation {
+  model_type?: string;
+  prediction?: any;
+  top_contributors: {
+    feature: string;
+    impact: number;
+    value: any;
+  }[];
+}
+
+export interface PredictionHistoryItem {
+  dataset_id?: string;
+  job_id?: string;
+  model_type?: string;
+  features: Record<string, any>;
+  prediction: any;
+  created_at?: string;
 }

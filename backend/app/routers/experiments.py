@@ -8,6 +8,7 @@ from app.database import get_db
 from app.models.experiment import Experiment
 from app.models.job import TrainingJob
 from app.services.experiment_tracker import ExperimentTracker
+from app.services.project_metadata import metadata_store
 
 
 router = APIRouter()
@@ -18,6 +19,14 @@ class CreateExperimentRequest(BaseModel):
     name: str
     optimization_metric: Optional[str] = "f1"
     description: Optional[str] = ""
+
+
+class UpdateExperimentMetadataRequest(BaseModel):
+    name: Optional[str] = None
+    tags: Optional[list[str]] = None
+    favorite: Optional[bool] = None
+    archived: Optional[bool] = None
+    notes: Optional[str] = None
 
 
 @router.post("/")
@@ -46,7 +55,7 @@ def list_experiments(dataset_id: Optional[str] = None, db: Session = Depends(get
         query = query.filter(Experiment.dataset_id == dataset_id)
     experiments = query.order_by(Experiment.created_at.desc()).all()
     return [
-        {
+        _merge_experiment_metadata({
             "id": e.id,
             "dataset_id": e.dataset_id,
             "name": e.name,
@@ -54,7 +63,7 @@ def list_experiments(dataset_id: Optional[str] = None, db: Session = Depends(get
             "best_job_id": e.best_job_id,
             "status": e.status,
             "created_at": e.created_at.isoformat() if e.created_at else None,
-        }
+        }, e.id)
         for e in experiments
     ]
 
@@ -72,7 +81,7 @@ def get_experiment(experiment_id: str, db: Session = Depends(get_db)):
         .all()
     )
 
-    return {
+    return _merge_experiment_metadata({
         "id": experiment.id,
         "dataset_id": experiment.dataset_id,
         "name": experiment.name,
@@ -93,7 +102,7 @@ def get_experiment(experiment_id: str, db: Session = Depends(get_db)):
             }
             for j in jobs
         ],
-    }
+    }, experiment.id)
 
 
 @router.get("/{experiment_id}/compare")
@@ -119,3 +128,67 @@ def complete_experiment(experiment_id: str, db: Session = Depends(get_db)):
         }
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.patch("/{experiment_id}/metadata")
+def update_experiment_metadata(
+    experiment_id: str,
+    request: UpdateExperimentMetadataRequest,
+    db: Session = Depends(get_db),
+):
+    experiment = db.query(Experiment).filter(Experiment.id == experiment_id).first()
+    if not experiment:
+        raise HTTPException(status_code=404, detail="Experiment not found")
+
+    if request.name:
+        experiment.name = request.name
+        db.commit()
+
+    metadata = metadata_store.update_experiment(experiment_id, request.model_dump(exclude_none=True))
+    return {
+        "id": experiment_id,
+        "name": experiment.name,
+        **metadata,
+    }
+
+
+@router.get("/{experiment_id}/report")
+def experiment_report(experiment_id: str, db: Session = Depends(get_db)):
+    tracker = ExperimentTracker(db)
+    try:
+        comparison = tracker.compare_jobs(experiment_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+    experiment = db.query(Experiment).filter(Experiment.id == experiment_id).first()
+    if not experiment:
+        raise HTTPException(status_code=404, detail="Experiment not found")
+
+    report_lines = [
+        f"# Experiment Report: {comparison.get('name', 'Experiment')}",
+        "",
+        f"- Experiment ID: `{comparison['experiment_id']}`",
+        f"- Dataset ID: `{comparison['dataset_id']}`",
+        f"- Optimization metric: `{comparison['optimization_metric']}`",
+        f"- Status: `{comparison['status']}`",
+        "",
+        "## Model Results",
+        "",
+    ]
+
+    for job in comparison["jobs"]:
+        metrics = ", ".join(
+            f"{key}={value}"
+            for key, value in (job.get("metrics") or {}).items()
+            if key != "confusion_matrix"
+        )
+        report_lines.append(
+            f"- {'BEST ' if job.get('is_best') else ''}{job['model_type']}: {metrics}"
+        )
+
+    return {"markdown": "\n".join(report_lines)}
+
+
+def _merge_experiment_metadata(payload: dict, experiment_id: str):
+    payload.update(metadata_store.get_experiment(experiment_id))
+    return payload

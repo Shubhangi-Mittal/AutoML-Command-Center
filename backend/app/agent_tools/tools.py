@@ -78,6 +78,14 @@ TOOL_DEFINITIONS = [
                     "type": "string",
                     "description": "Metric to optimize for (e.g., 'f1', 'accuracy', 'recall', 'rmse'). Default: 'f1' for classification, 'rmse' for regression.",
                 },
+                "cv_folds": {
+                    "type": "integer",
+                    "description": "Optional number of cross-validation folds. Use 1 to disable cross-validation.",
+                },
+                "tune_hyperparameters": {
+                    "type": "boolean",
+                    "description": "Whether to run lightweight hyperparameter tuning before final training.",
+                },
             },
             "required": ["dataset_id"],
         },
@@ -232,6 +240,7 @@ async def execute_launch_training(
     dataset_id: str, db: Session,
     target_column: str = None, task_type: str = None,
     model_types: list = None, optimization_metric: str = None,
+    cv_folds: int = 1, tune_hyperparameters: bool = False,
     **kwargs,
 ) -> Dict[str, Any]:
     dataset = db.query(Dataset).filter(Dataset.id == dataset_id).first()
@@ -259,7 +268,12 @@ async def execute_launch_training(
     engine = FeatureEngine(df, target_col, t_type)
     X_train, X_test, y_train, y_test, metadata = engine.auto_engineer()
 
-    results = train_all_models(X_train, X_test, y_train, y_test, t_type, m_types)
+    results = train_all_models(
+        X_train, X_test, y_train, y_test, t_type, m_types,
+        optimization_metric=opt_metric,
+        cv_folds=cv_folds or 1,
+        tune_hyperparameters=bool(tune_hyperparameters),
+    )
 
     # Save jobs
     jobs_summary = []
@@ -287,6 +301,8 @@ async def execute_launch_training(
             "top_features": dict(list(result.get("feature_importance", {}).items())[:5]),
             "training_duration_seconds": result["training_duration_seconds"],
             "model_path": model_path,
+            "cross_validation": result.get("cross_validation"),
+            "hyperparameters": result.get("hyperparameters"),
         })
 
     # Complete experiment
@@ -301,6 +317,8 @@ async def execute_launch_training(
             "transformations": metadata["transformations"],
             "feature_count": metadata["feature_count"],
         },
+        "cv_folds": cv_folds or 1,
+        "tune_hyperparameters": bool(tune_hyperparameters),
         "jobs": jobs_summary,
     }
 
