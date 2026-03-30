@@ -12,7 +12,7 @@ class Settings(BaseSettings):
 	MAX_UPLOAD_SIZE_MB: int = 100
 	ALLOWED_ORIGINS: str = "http://localhost:3000"
 
-	model_config = SettingsConfigDict(env_file=".env")
+	model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 
 settings = Settings()

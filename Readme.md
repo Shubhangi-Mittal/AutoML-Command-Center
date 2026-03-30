@@ -1,6 +1,6 @@
 # AutoML Command Center
 
-> An end-to-end ML experiment tracking & AutoML platform with an AI agent that orchestrates the entire data science workflow through natural language conversation.
+> An end-to-end ML experiment tracking and AutoML platform with an AI agent that orchestrates the full data science workflow through natural language conversation.
 
 **[Live Demo](https://automl-command-center.vercel.app)** | [API Docs](https://automl-backend.onrender.com/docs) | [Architecture](#architecture)
 
@@ -13,7 +13,7 @@ Upload a CSV, and the AI agent will:
 1. **Profile** your dataset (distributions, correlations, data quality warnings)
 2. **Suggest** a target variable and task type (classification/regression)
 3. **Engineer features** automatically (imputation, encoding, scaling, skewness handling)
-4. **Train models** in parallel (XGBoost, Random Forest, Logistic/Linear Regression)
+4. **Train models** across multiple baselines (XGBoost, Random Forest, Logistic/Linear Regression)
 5. **Compare results** with detailed metrics and feature importance
 6. **Deploy** the best model as a REST API for real-time predictions
 
@@ -25,7 +25,7 @@ All through natural language chat. No clicking through menus.
 |---|---|
 | Frontend | Next.js 14, TypeScript, Tailwind CSS |
 | Backend | FastAPI, Python 3.11, SQLAlchemy |
-| AI Agent | Claude API (Anthropic), ReAct pattern, 6 custom tools |
+| AI Agent | Groq or Claude, ReAct + fast-path routing, dataset-scoped chat |
 | ML Pipeline | Scikit-learn, XGBoost, Pandas, NumPy |
 | Database | PostgreSQL (Neon) / SQLite (local) |
 | Hosting | Vercel (frontend) + Render (backend) |
@@ -103,9 +103,10 @@ docker-compose up -d
 
 ### AI Agent
 - Natural language interface for the entire ML workflow
-- ReAct pattern with 6 tools: profile, engineer, train, query, deploy, sample
-- Works with Anthropic Claude API (or fallback mode without API key)
-- Conversation history and context management
+- ReAct pattern plus deterministic fast paths for common requests
+- Works with Groq, Anthropic Claude, or local fallback mode
+- Dataset-specific chat history and session isolation
+- Tools for profiling, training, comparison, deployment, prediction templates, and improvement suggestions
 
 ### Model Serving
 - One-click deployment from experiment results
@@ -127,6 +128,26 @@ vercel --prod
 4. Deploy
 
 See the full [Deployment Guide](./docs/deployment.md) for detailed instructions.
+
+## Verification
+
+```bash
+# Backend syntax check
+python3 -m py_compile backend/app/main.py backend/app/routers/*.py backend/app/services/*.py backend/app/tasks/*.py
+
+# Backend unit tests
+PYTHONPATH=backend python3 -m unittest discover -s backend/tests
+
+# Frontend production build
+cd frontend && npm run build
+```
+
+## Why This Is A Strong Student Project
+
+- It solves a full end-to-end workflow instead of a single isolated feature.
+- It combines frontend, backend, ML, background jobs, and AI orchestration in one coherent product.
+- It shows product thinking: upload, inspect, train, compare, deploy, and test predictions in one place.
+- It is still compact enough to explain clearly in an interview, which makes it strong portfolio material.
 
 ## API Endpoints
 

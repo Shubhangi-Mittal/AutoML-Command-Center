@@ -9,6 +9,7 @@ from app.database import SessionLocal
 from app.models.dataset import Dataset  # noqa: F401
 from app.models.experiment import Experiment  # noqa: F401
 from app.models.job import TrainingJob
+from app.services.experiment_tracker import ExperimentTracker
 from app.services.feature_engine import FeatureEngine
 from app.services.trainer import train_model
 
@@ -27,6 +28,22 @@ def _publish_progress(dataset_id: str, job_id: str, model_type: str, status: str
         r.publish("training_progress", message)
     except Exception:
         pass  # Don't fail training if Redis pub/sub fails
+
+
+def _finalize_experiment_if_ready(db, experiment_id: str | None):
+    """Complete an experiment once all of its jobs have reached a terminal state."""
+    if not experiment_id:
+        return
+
+    jobs = db.query(TrainingJob).filter(TrainingJob.experiment_id == experiment_id).all()
+    if not jobs:
+        return
+
+    if any(job.status not in ("completed", "failed") for job in jobs):
+        return
+
+    tracker = ExperimentTracker(db)
+    tracker.complete_experiment(experiment_id)
 
 
 @celery_app.task(bind=True, name="train_single_model")
@@ -77,6 +94,7 @@ def train_single_model_task(
         job.training_duration_seconds = result["training_duration_seconds"]
         job.completed_at = datetime.now(timezone.utc)
         db.commit()
+        _finalize_experiment_if_ready(db, job.experiment_id)
 
         _publish_progress(dataset_id, job_id, model_type, "completed", json.dumps(result["metrics"]))
 
@@ -96,6 +114,7 @@ def train_single_model_task(
         if job:
             job.status = "failed"
             db.commit()
+            _finalize_experiment_if_ready(db, job.experiment_id)
         _publish_progress(dataset_id, job_id, model_type, "failed", str(e))
         raise
 

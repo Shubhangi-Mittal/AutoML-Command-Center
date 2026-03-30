@@ -9,7 +9,8 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.database import get_db
+from app.database import SessionLocal, get_db
+from app.models.experiment import Experiment
 from app.models.dataset import Dataset
 from app.models.job import TrainingJob
 from app.services.feature_engine import FeatureEngine
@@ -169,8 +170,22 @@ def _launch_sync(dataset, target_col, task_type, model_types, experiment_id, db)
     }
 
 
+def _experiment_is_terminal(experiment_id: str | None) -> bool:
+    if not experiment_id:
+        return False
+
+    db = SessionLocal()
+    try:
+        experiment = db.query(Experiment).filter(Experiment.id == experiment_id).first()
+        if not experiment:
+            return False
+        return experiment.status == "completed"
+    finally:
+        db.close()
+
+
 @router.get("/stream/progress/{dataset_id}")
-async def stream_progress(dataset_id: str):
+async def stream_progress(dataset_id: str, experiment_id: Optional[str] = None):
     """SSE endpoint streaming real-time training progress via Redis pub/sub."""
     import redis as redis_lib
 
@@ -187,9 +202,9 @@ async def stream_progress(dataset_id: str):
                     if data.get("dataset_id") == dataset_id:
                         yield f"data: {json.dumps(data)}\n\n"
 
-                        # Stop streaming when all jobs are done
-                        if data.get("status") in ("completed", "failed"):
+                        if _experiment_is_terminal(experiment_id):
                             yield f"data: {json.dumps({'status': 'stream_end'})}\n\n"
+                            break
 
                 # Heartbeat to keep connection alive
                 yield ": heartbeat\n\n"
