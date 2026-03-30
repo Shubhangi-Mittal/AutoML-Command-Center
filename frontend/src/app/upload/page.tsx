@@ -121,7 +121,7 @@ function UploadPageContent() {
             {datasets.map((ds) => (
               <button
                 key={ds.id}
-                onClick={() => setDataset(ds)}
+                onClick={() => api.getDataset(ds.id).then(setDataset).catch(() => setDataset(ds))}
                 className="flex items-center gap-3 p-3 rounded-lg border border-gray-100 hover:border-blue-300 hover:bg-blue-50 transition-all text-left"
               >
                 <span>📄</span>

@@ -209,7 +209,15 @@ export default function DeployPage() {
             <div className="mt-4 bg-emerald-50 rounded-lg border border-emerald-200 p-4">
               <h4 className="text-sm font-semibold text-emerald-800 mb-2">Prediction Result</h4>
               <div className="font-mono text-sm text-emerald-900">
-                <p>Prediction: <strong>{JSON.stringify(prediction.prediction)}</strong></p>
+                {(() => {
+                  const ds = datasets.find((d) => d.id === selectedDataset);
+                  const targetName = ds?.target_column;
+                  return targetName ? (
+                    <p>Target: <strong>{targetName}</strong> = <strong>{JSON.stringify(prediction.prediction)}</strong></p>
+                  ) : (
+                    <p>Prediction: <strong>{JSON.stringify(prediction.prediction)}</strong></p>
+                  );
+                })()}
                 {prediction.probabilities && (
                   <p className="mt-1">
                     Probabilities: {prediction.probabilities.map(

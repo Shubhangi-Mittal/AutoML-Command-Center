@@ -1,7 +1,6 @@
-"""AI Agent with ReAct pattern using Claude/Groq API, with intent-detection fallback."""
+"""AI Agent with fast-path routing and tool-calling backends."""
 
 import json
-import re
 from typing import Any, Dict, List, Optional
 from sqlalchemy.orm import Session
 
@@ -10,7 +9,7 @@ from app.agent_tools.tools import TOOL_DEFINITIONS, TOOL_EXECUTORS
 
 
 SYSTEM_PROMPT = """You are an expert ML engineer assistant powering the AutoML Command Center.
-You help users profile datasets, engineer features, train models, compare experiments, and deploy the best model.
+You help users profile datasets, engineer features, train models, compare experiments, deploy models, and make predictions.
 
 You have access to these tools:
 - profile_dataset: Analyze a dataset's columns, statistics, correlations, and quality warnings.
@@ -18,13 +17,19 @@ You have access to these tools:
 - launch_training: Train models (linear, xgboost, random_forest) with automatic feature engineering.
 - query_experiments: Compare model results sorted by optimization metric.
 - deploy_model: Deploy the best model to the prediction API.
+- get_prediction_template: Generate sample JSON input for making predictions. Use when users ask for test/sample/example JSON.
+- make_prediction: Make a prediction with the deployed model. Use when users want to test or try the model.
+- get_serving_status: Check if a model is currently deployed and its details.
+- suggest_improvements: Analyze results and suggest ways to improve model performance.
 
 Workflow:
 1. When a user asks to analyze/profile data, call profile_dataset first.
 2. When asked to train models, call launch_training. You can specify target_column, task_type, model_types, and optimization_metric.
 3. After training, summarize the results clearly: which model won, key metrics, and top features.
 4. When asked to deploy, call deploy_model with the best job_id.
-5. Be concise but informative. Use numbers and percentages.
+5. When asked for sample/test JSON or to test a prediction: first call get_prediction_template to get sample data, then call make_prediction with those features. Show the user both the input JSON and the prediction result.
+6. When asked how to improve, call suggest_improvements.
+7. Be concise but informative. Use numbers and percentages.
 
 If the user provides a dataset_id, use it. Otherwise, ask which dataset to work with.
 """
@@ -46,6 +51,17 @@ def _claude_tools_to_openai(claude_tools: list) -> list:
 
 
 OPENAI_TOOL_DEFINITIONS = _claude_tools_to_openai(TOOL_DEFINITIONS)
+FAST_PATH_KEYWORDS = {
+    "predict": ["predict", "test json", "sample json", "example json", "try the model", "test prediction"],
+    "improve": ["improve", "suggestion", "better", "how can i"],
+    "status": ["status", "deployed", "serving"],
+    "deploy": ["deploy", "serve", "production"],
+    "profile": ["profile", "analyze", "describe", "explore", "look at"],
+    "train": ["train", "build", "fit", "learn"],
+    "compare": ["compare", "experiment", "result", "which"],
+    "sample": ["sample", "show", "preview", "head"],
+}
+MAX_HISTORY_MESSAGES = 12
 
 
 class MLAgent:
@@ -53,6 +69,8 @@ class MLAgent:
 
     def __init__(self):
         self.conversations: Dict[str, List[Dict]] = {}
+        self._groq_client = None
+        self._anthropic_client = None
 
     async def chat(
         self,
@@ -62,6 +80,9 @@ class MLAgent:
         db: Session,
     ) -> Dict[str, Any]:
         """Process a user message and return the agent's response."""
+        if self._should_use_fast_path(user_message):
+            return await self._chat_fallback(user_message, session_id, dataset_id, db)
+
         if settings.GROQ_API_KEY:
             return await self._chat_with_groq(user_message, session_id, dataset_id, db)
         elif settings.ANTHROPIC_API_KEY:
@@ -75,19 +96,10 @@ class MLAgent:
         """Full ReAct loop using Groq API with tool use."""
         from groq import Groq
 
-        client = Groq(api_key=settings.GROQ_API_KEY)
+        client = self._get_groq_client(Groq)
 
-        if session_id not in self.conversations:
-            self.conversations[session_id] = []
-
-        history = self.conversations[session_id]
-
-        if dataset_id:
-            user_content = f"[Active dataset ID: {dataset_id}]\n\n{user_message}"
-        else:
-            user_content = user_message
-
-        history.append({"role": "user", "content": user_content})
+        history = self._get_history(session_id)
+        history.append({"role": "user", "content": self._build_user_content(user_message, dataset_id)})
 
         tool_calls_summary = []
         max_iterations = 10
@@ -109,29 +121,11 @@ class MLAgent:
             history.append(message.model_dump(exclude_none=True))
 
             if message.tool_calls:
-                # Execute each tool call
                 for tc in message.tool_calls:
                     tool_name = tc.function.name
-                    try:
-                        tool_input = json.loads(tc.function.arguments)
-                    except json.JSONDecodeError:
-                        tool_input = {}
-
-                    # Inject dataset_id if not provided
-                    if dataset_id and "dataset_id" not in tool_input:
-                        tool_input["dataset_id"] = dataset_id
-
-                    executor = TOOL_EXECUTORS.get(tool_name)
-                    if executor:
-                        result = await executor(db=db, **tool_input)
-                    else:
-                        result = {"error": f"Unknown tool: {tool_name}"}
-
-                    tool_calls_summary.append({
-                        "tool": tool_name,
-                        "input": tool_input,
-                        "output_summary": _summarize_result(result),
-                    })
+                    tool_input = self._parse_tool_arguments(tc.function.arguments)
+                    result, summary = await self._execute_tool(tool_name, tool_input, dataset_id, db)
+                    tool_calls_summary.append(summary)
 
                     history.append({
                         "role": "tool",
@@ -140,9 +134,7 @@ class MLAgent:
                     })
             else:
                 final_text = message.content or ""
-
-                if len(history) > 20:
-                    history[:] = history[-16:]
+                self._trim_history(history)
 
                 return {
                     "response": final_text,
@@ -160,21 +152,9 @@ class MLAgent:
         """Full ReAct loop using Claude API with tool use."""
         import anthropic
 
-        client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
-
-        # Get or create conversation history
-        if session_id not in self.conversations:
-            self.conversations[session_id] = []
-
-        history = self.conversations[session_id]
-
-        # Inject dataset context into user message
-        if dataset_id:
-            user_content = f"[Active dataset ID: {dataset_id}]\n\n{user_message}"
-        else:
-            user_content = user_message
-
-        history.append({"role": "user", "content": user_content})
+        client = self._get_anthropic_client(anthropic)
+        history = self._get_history(session_id)
+        history.append({"role": "user", "content": self._build_user_content(user_message, dataset_id)})
 
         tool_calls = []
         max_iterations = 10
@@ -192,28 +172,12 @@ class MLAgent:
             history.append({"role": "assistant", "content": response.content})
 
             if response.stop_reason == "tool_use":
-                # Execute each tool call
                 tool_results = []
                 for block in response.content:
                     if block.type == "tool_use":
                         tool_name = block.name
-                        tool_input = block.input
-
-                        # Inject dataset_id if not provided
-                        if dataset_id and "dataset_id" not in tool_input:
-                            tool_input["dataset_id"] = dataset_id
-
-                        executor = TOOL_EXECUTORS.get(tool_name)
-                        if executor:
-                            result = await executor(db=db, **tool_input)
-                        else:
-                            result = {"error": f"Unknown tool: {tool_name}"}
-
-                        tool_calls.append({
-                            "tool": tool_name,
-                            "input": tool_input,
-                            "output_summary": _summarize_result(result),
-                        })
+                        result, summary = await self._execute_tool(tool_name, block.input, dataset_id, db)
+                        tool_calls.append(summary)
 
                         tool_results.append({
                             "type": "tool_result",
@@ -229,9 +193,7 @@ class MLAgent:
                     if hasattr(block, "text"):
                         final_text += block.text
 
-                # Keep conversation manageable
-                if len(history) > 20:
-                    history[:] = history[-16:]
+                self._trim_history(history)
 
                 return {
                     "response": final_text,
@@ -251,7 +213,67 @@ class MLAgent:
         tool_calls = []
 
         # Detect intent and call appropriate tools (order matters — more specific first)
-        if any(w in message_lower for w in ["deploy", "serve", "production"]):
+        if any(w in message_lower for w in ["predict", "test json", "sample json", "example json", "try the model", "test prediction"]):
+            # Get prediction template and make a prediction
+            if not dataset_id:
+                return {"response": "Please select a dataset first.", "tool_calls": []}
+
+            template = await TOOL_EXECUTORS["get_prediction_template"](dataset_id=dataset_id, db=db)
+            tool_calls.append({"tool": "get_prediction_template", "input": {"dataset_id": dataset_id}, "output_summary": _summarize_result(template)})
+
+            if "error" in template:
+                return {"response": template["error"], "tool_calls": tool_calls}
+
+            # Try making a prediction with the sample
+            pred_result = await TOOL_EXECUTORS["make_prediction"](features=template["sample_input"], db=db)
+            tool_calls.append({"tool": "make_prediction", "input": template["sample_input"], "output_summary": _summarize_result(pred_result)})
+
+            response = f"**Sample Prediction for {template['dataset_name']}**\n\n"
+            response += f"Target column: `{template['target_column']}` ({template['task_type']})\n\n"
+            response += f"**Input JSON:**\n```json\n{json.dumps(template['sample_input'], indent=2, default=str)}\n```\n\n"
+
+            if "error" in pred_result:
+                response += f"**Prediction failed:** {pred_result['error']}\n\nDeploy a model first, then try again."
+            else:
+                response += f"**Prediction:** `{template['target_column']}` = **{pred_result['prediction']}**\n"
+                if pred_result.get("probabilities"):
+                    response += f"**Probabilities:** {pred_result['probabilities']}\n"
+                response += f"\nModel: {pred_result.get('model_type', 'N/A')}"
+
+            return {"response": response, "tool_calls": tool_calls}
+
+        elif any(w in message_lower for w in ["improve", "suggestion", "better", "how can i"]):
+            if not dataset_id:
+                return {"response": "Please select a dataset first.", "tool_calls": []}
+
+            result = await TOOL_EXECUTORS["suggest_improvements"](dataset_id=dataset_id, db=db)
+            tool_calls.append({"tool": "suggest_improvements", "input": {"dataset_id": dataset_id}, "output_summary": _summarize_result(result)})
+
+            if "error" in result:
+                return {"response": result["error"], "tool_calls": tool_calls}
+
+            response = f"**Improvement Suggestions for {result['dataset_name']}**\n\n"
+            response += f"Best model: **{result['best_model']}** ({result['models_trained']} models trained)\n\n"
+            for i, s in enumerate(result["suggestions"], 1):
+                response += f"{i}. {s}\n"
+            return {"response": response, "tool_calls": tool_calls}
+
+        elif any(w in message_lower for w in ["status", "deployed", "serving"]):
+            result = await TOOL_EXECUTORS["get_serving_status"](db=db)
+            tool_calls.append({"tool": "get_serving_status", "input": {}, "output_summary": _summarize_result(result)})
+
+            if result["status"] == "deployed":
+                response = (
+                    f"**Model is deployed** ✅\n\n"
+                    f"- **Type:** {result.get('model_type', 'N/A')}\n"
+                    f"- **Dataset:** {result.get('dataset_name', 'N/A')}\n"
+                    f"- **Deployed at:** {result.get('deployed_at', 'N/A')}\n"
+                )
+            else:
+                response = "**No model deployed.** Train models and deploy the best one first."
+            return {"response": response, "tool_calls": tool_calls}
+
+        elif any(w in message_lower for w in ["deploy", "serve", "production"]):
             result = await TOOL_EXECUTORS["deploy_model"](db=db, dataset_id=dataset_id)
             tool_calls.append({"tool": "deploy_model", "input": {"dataset_id": dataset_id}, "output_summary": _summarize_result(result)})
 
@@ -372,7 +394,10 @@ class MLAgent:
                     "- **\"Train models\"** — build and compare ML models\n"
                     "- **\"Train optimizing for recall\"** — specify a metric\n"
                     "- **\"Compare results\"** — see experiment comparisons\n"
-                    "- **\"Deploy the best model\"** — serve predictions via API\n\n"
+                    "- **\"Deploy the best model\"** — serve predictions via API\n"
+                    "- **\"Give me sample test JSON\"** — get a prediction template + result\n"
+                    "- **\"How can I improve?\"** — get suggestions for better performance\n"
+                    "- **\"What's the serving status?\"** — check deployed model info\n\n"
                     "Select a dataset first, then tell me what to do!"
                 ),
                 "tool_calls": [],
@@ -381,6 +406,71 @@ class MLAgent:
     def reset(self, session_id: str) -> None:
         """Clear conversation history for a session."""
         self.conversations.pop(session_id, None)
+
+    def _should_use_fast_path(self, user_message: str) -> bool:
+        message_lower = user_message.lower()
+        matched_categories = [
+            category
+            for category, keywords in FAST_PATH_KEYWORDS.items()
+            if any(keyword in message_lower for keyword in keywords)
+        ]
+        return len(matched_categories) == 1
+
+    def _get_history(self, session_id: str) -> List[Dict[str, Any]]:
+        if session_id not in self.conversations:
+            self.conversations[session_id] = []
+        return self.conversations[session_id]
+
+    def _build_user_content(self, user_message: str, dataset_id: Optional[str]) -> str:
+        if not dataset_id:
+            return user_message
+        return f"[Active dataset ID: {dataset_id}]\n\n{user_message}"
+
+    def _get_groq_client(self, groq_client_cls):
+        if self._groq_client is None:
+            self._groq_client = groq_client_cls(api_key=settings.GROQ_API_KEY)
+        return self._groq_client
+
+    def _get_anthropic_client(self, anthropic_module):
+        if self._anthropic_client is None:
+            self._anthropic_client = anthropic_module.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+        return self._anthropic_client
+
+    def _parse_tool_arguments(self, raw_arguments: Optional[str]) -> Dict[str, Any]:
+        if not raw_arguments:
+            return {}
+        try:
+            return json.loads(raw_arguments)
+        except json.JSONDecodeError:
+            return {}
+
+    async def _execute_tool(
+        self,
+        tool_name: str,
+        tool_input: Optional[Dict[str, Any]],
+        dataset_id: Optional[str],
+        db: Session,
+    ) -> tuple[Dict[str, Any], Dict[str, Any]]:
+        resolved_input = dict(tool_input or {})
+        if dataset_id and "dataset_id" not in resolved_input:
+            resolved_input["dataset_id"] = dataset_id
+
+        executor = TOOL_EXECUTORS.get(tool_name)
+        if executor:
+            result = await executor(db=db, **resolved_input)
+        else:
+            result = {"error": f"Unknown tool: {tool_name}"}
+
+        summary = {
+            "tool": tool_name,
+            "input": resolved_input,
+            "output_summary": _summarize_result(result),
+        }
+        return result, summary
+
+    def _trim_history(self, history: List[Dict[str, Any]]) -> None:
+        if len(history) > MAX_HISTORY_MESSAGES:
+            history[:] = history[-MAX_HISTORY_MESSAGES:]
 
 
 def _summarize_result(result: Dict[str, Any]) -> str:

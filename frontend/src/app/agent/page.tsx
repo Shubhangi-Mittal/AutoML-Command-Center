@@ -3,21 +3,71 @@ import { useState, useEffect, useRef } from "react";
 import { api } from "@/lib/api";
 import { Dataset, ChatMessage } from "@/types";
 
+const DATASET_KEY = "automl_agent_dataset";
+
+function chatKey(datasetId: string | undefined): string {
+  return `automl_agent_chat_${datasetId || "global"}`;
+}
+
+function loadMessages(datasetId: string | undefined): ChatMessage[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = sessionStorage.getItem(chatKey(datasetId));
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return parsed.map((m: any) => ({ ...m, timestamp: new Date(m.timestamp) }));
+  } catch {
+    return [];
+  }
+}
+
+function saveMessages(messages: ChatMessage[], datasetId: string | undefined) {
+  try {
+    sessionStorage.setItem(chatKey(datasetId), JSON.stringify(messages));
+  } catch {}
+}
+
+function loadDatasetId(): string | undefined {
+  if (typeof window === "undefined") return undefined;
+  return sessionStorage.getItem(DATASET_KEY) || undefined;
+}
+
+function saveDatasetId(id: string | undefined) {
+  try {
+    if (id) sessionStorage.setItem(DATASET_KEY, id);
+    else sessionStorage.removeItem(DATASET_KEY);
+  } catch {}
+}
+
 export default function AgentPage() {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>(() => loadMessages(loadDatasetId()));
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [datasets, setDatasets] = useState<Dataset[]>([]);
-  const [activeDataset, setActiveDataset] = useState<string | undefined>();
+  const [activeDataset, setActiveDataset] = useState<string | undefined>(() => loadDatasetId());
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     api.listDatasets().then((ds) => {
       setDatasets(ds);
-      if (ds.length > 0) setActiveDataset(ds[0].id);
+      if (!activeDataset && ds.length > 0) {
+        setActiveDataset(ds[0].id);
+        saveDatasetId(ds[0].id);
+      }
     }).catch(() => {});
   }, []);
+
+  // Persist messages to sessionStorage (per dataset)
+  useEffect(() => {
+    saveMessages(messages, activeDataset);
+  }, [messages, activeDataset]);
+
+  // When dataset changes, load that dataset's chat history
+  useEffect(() => {
+    saveDatasetId(activeDataset);
+    setMessages(loadMessages(activeDataset));
+  }, [activeDataset]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -68,6 +118,7 @@ export default function AgentPage() {
   async function handleReset() {
     await api.resetAgent("default").catch(() => {});
     setMessages([]);
+    sessionStorage.removeItem(chatKey(activeDataset));
   }
 
   const activeDsName = datasets.find((d) => d.id === activeDataset)?.name;
@@ -157,7 +208,7 @@ export default function AgentPage() {
             onKeyDown={handleKeyDown}
             placeholder={
               activeDataset
-                ? "Ask me to analyze, train, compare, or deploy..."
+                ? "Ask me to analyze, train, compare, deploy, predict, or improve..."
                 : "Select a dataset first, or ask me anything..."
             }
             rows={1}
@@ -243,8 +294,10 @@ function EmptyState({
     ? [
         "Analyze this dataset and tell me what you find",
         "Train all available models and compare results",
-        "What's the best model for this data?",
-        "Deploy the best performing model",
+        "Deploy the best model",
+        "Give me sample test JSON and predict",
+        "How can I improve the model performance?",
+        "What's the current serving status?",
       ]
     : [
         "What can you help me with?",
@@ -259,7 +312,7 @@ function EmptyState({
       </h2>
       <p className="text-sm text-gray-500 mb-6 max-w-md">
         {activeDataset
-          ? `I can analyze "${activeDataset}", engineer features, train models, and deploy the best one — all through conversation.`
+          ? `I can analyze "${activeDataset}", engineer features, train models, deploy, predict, and suggest improvements — all through conversation.`
           : "Select a dataset above, then tell me what you want to build. I'll handle the rest."}
       </p>
       <div className="flex flex-wrap justify-center gap-2 max-w-lg">
@@ -285,6 +338,8 @@ function simpleMarkdown(text: string): string {
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
+    // Code blocks (triple backticks)
+    .replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>')
     // Headers
     .replace(/^### (.+)$/gm, "<h3>$1</h3>")
     .replace(/^## (.+)$/gm, "<h2>$1</h2>")

@@ -118,6 +118,57 @@ TOOL_DEFINITIONS = [
             "required": [],
         },
     },
+    {
+        "name": "get_prediction_template",
+        "description": "Generate a sample JSON template for making predictions with the deployed model. Returns example feature values based on the dataset, so the user can see what input format is needed. Call this when a user asks for sample/test/example JSON for prediction.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "dataset_id": {
+                    "type": "string",
+                    "description": "The dataset ID to generate the template from.",
+                },
+            },
+            "required": ["dataset_id"],
+        },
+    },
+    {
+        "name": "make_prediction",
+        "description": "Make a prediction using the currently deployed model. Use this after deploying a model to test it with sample data, or when the user asks to predict/test/try the model. You can get a sample template first using get_prediction_template.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "features": {
+                    "type": "object",
+                    "description": "Feature key-value pairs to predict on. Keys should match the dataset column names (excluding the target).",
+                },
+            },
+            "required": ["features"],
+        },
+    },
+    {
+        "name": "get_serving_status",
+        "description": "Check the current model serving/deployment status. Returns whether a model is deployed, its type, metrics, and deployment time.",
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+        },
+    },
+    {
+        "name": "suggest_improvements",
+        "description": "Analyze the current experiment results and suggest ways to improve model performance. Looks at metrics, feature importance, and data quality to give actionable recommendations.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "dataset_id": {
+                    "type": "string",
+                    "description": "The dataset ID to analyze.",
+                },
+            },
+            "required": ["dataset_id"],
+        },
+    },
 ]
 
 
@@ -128,7 +179,18 @@ async def execute_profile_dataset(dataset_id: str, db: Session, **kwargs) -> Dic
     if not dataset:
         return {"error": f"Dataset {dataset_id} not found"}
 
-    profile = profile_dataset(dataset.file_path)
+    profile = dataset.profile
+    if not profile:
+        profile = profile_dataset(dataset.file_path)
+        dataset.profile = profile
+        dataset.rows = profile.get("row_count")
+        dataset.columns = profile.get("column_count")
+        dataset.target_column = dataset.target_column or profile.get("suggested_target")
+        dataset.task_type = dataset.task_type or profile.get("suggested_task_type")
+        db.add(dataset)
+        db.commit()
+        db.refresh(dataset)
+
     return {
         "dataset_name": dataset.name,
         "row_count": profile["row_count"],
@@ -301,6 +363,156 @@ async def execute_deploy_model(
     }
 
 
+async def execute_get_prediction_template(dataset_id: str, db: Session, **kwargs) -> Dict[str, Any]:
+    """Generate a sample prediction JSON from a dataset's first row (excluding target)."""
+    dataset = db.query(Dataset).filter(Dataset.id == dataset_id).first()
+    if not dataset:
+        return {"error": f"Dataset {dataset_id} not found"}
+
+    df = pd.read_csv(dataset.file_path, encoding="utf-8-sig", nrows=1)
+    target_col = dataset.target_column
+
+    # Exclude target column from features
+    feature_cols = [c for c in df.columns if c != target_col]
+    sample_row = df[feature_cols].iloc[0].to_dict()
+
+    # Clean up NaN values for JSON
+    for k, v in sample_row.items():
+        if pd.isna(v):
+            sample_row[k] = None
+
+    return {
+        "dataset_name": dataset.name,
+        "target_column": target_col,
+        "task_type": dataset.task_type,
+        "feature_columns": feature_cols,
+        "sample_input": sample_row,
+        "hint": "Use these feature names and similar values to make predictions. The target column is excluded from input.",
+    }
+
+
+async def execute_make_prediction(features: dict, db: Session = None, **kwargs) -> Dict[str, Any]:
+    """Make a prediction using the currently deployed model."""
+    server = ModelServer.get_instance()
+    status = server.get_status()
+
+    if status["status"] != "deployed":
+        return {"error": "No model is currently deployed. Deploy a model first using deploy_model."}
+
+    try:
+        result = server.predict(features)
+        result["target_column"] = None
+
+        # Try to find the target column name from the job's dataset
+        if db and status.get("job_id"):
+            job = db.query(TrainingJob).filter(TrainingJob.id == status["job_id"]).first()
+            if job:
+                ds = db.query(Dataset).filter(Dataset.id == job.dataset_id).first()
+                if ds:
+                    result["target_column"] = ds.target_column
+
+        return result
+    except Exception as e:
+        return {"error": f"Prediction failed: {str(e)}"}
+
+
+async def execute_get_serving_status(db: Session = None, **kwargs) -> Dict[str, Any]:
+    """Check current model serving status."""
+    server = ModelServer.get_instance()
+    status = server.get_status()
+
+    if status["status"] == "deployed" and db and status.get("job_id"):
+        job = db.query(TrainingJob).filter(TrainingJob.id == status["job_id"]).first()
+        if job:
+            ds = db.query(Dataset).filter(Dataset.id == job.dataset_id).first()
+            if ds:
+                status["dataset_name"] = ds.name
+                status["target_column"] = ds.target_column
+
+    return status
+
+
+async def execute_suggest_improvements(dataset_id: str, db: Session, **kwargs) -> Dict[str, Any]:
+    """Analyze experiments and suggest improvements."""
+    dataset = db.query(Dataset).filter(Dataset.id == dataset_id).first()
+    if not dataset:
+        return {"error": f"Dataset {dataset_id} not found"}
+
+    # Get latest experiment
+    experiment = db.query(Experiment).filter(
+        Experiment.dataset_id == dataset_id
+    ).order_by(Experiment.created_at.desc()).first()
+
+    if not experiment:
+        return {"error": "No experiments found. Train models first."}
+
+    jobs = db.query(TrainingJob).filter(
+        TrainingJob.experiment_id == experiment.id,
+        TrainingJob.status == "completed",
+    ).all()
+
+    if not jobs:
+        return {"error": "No completed jobs found."}
+
+    # Analyze profile for data quality
+    suggestions = []
+    profile = dataset.profile or {}
+    warnings = profile.get("warnings", [])
+
+    # Data quality suggestions
+    for w in warnings:
+        if "missing" in w.lower():
+            suggestions.append(f"Data quality: {w} — Consider domain-specific imputation or dropping rows with too many missing values.")
+        elif "skew" in w.lower():
+            suggestions.append(f"Data quality: {w} — Already handled by auto feature engineering, but consider binning or winsorizing extreme outliers.")
+
+    # Model performance suggestions
+    best_job = None
+    for j in jobs:
+        if j.id == experiment.best_job_id:
+            best_job = j
+            break
+
+    if best_job and best_job.metrics:
+        metrics = best_job.metrics
+        if "f1" in metrics and metrics["f1"] < 0.7:
+            suggestions.append("F1 score is below 0.7 — try collecting more data, engineering interaction features, or tuning hyperparameters.")
+        if "accuracy" in metrics and metrics["accuracy"] < 0.8:
+            suggestions.append("Accuracy is below 80% — check for class imbalance and consider oversampling (SMOTE) or class weights.")
+        if "r2" in metrics and metrics["r2"] < 0.5:
+            suggestions.append("R² is below 0.5 — the model explains less than half the variance. Consider adding polynomial features or more relevant predictors.")
+
+    # Feature importance suggestions
+    if best_job and best_job.feature_importance:
+        fi = best_job.feature_importance
+        total_features = len(fi)
+        low_importance = [k for k, v in fi.items() if v < 0.01]
+        if len(low_importance) > total_features * 0.5:
+            suggestions.append(f"{len(low_importance)} of {total_features} features have near-zero importance — consider removing them to reduce noise and overfitting.")
+
+        top_features = list(fi.items())[:3]
+        if top_features:
+            suggestions.append(f"Top predictive features: {', '.join(f'{k} ({v:.3f})' for k, v in top_features)}. Consider engineering more features from these.")
+
+    # General suggestions
+    model_types_tried = [j.model_type for j in jobs]
+    if len(model_types_tried) < 3:
+        missing = set(["linear", "xgboost", "random_forest"]) - set(model_types_tried)
+        if missing:
+            suggestions.append(f"Haven't tried: {', '.join(missing)}. Training more model types could find a better fit.")
+
+    if not suggestions:
+        suggestions.append("Model performance looks good! Consider cross-validation for more robust estimates.")
+
+    return {
+        "dataset_name": dataset.name,
+        "best_model": best_job.model_type if best_job else None,
+        "best_metrics": best_job.metrics if best_job else None,
+        "suggestions": suggestions,
+        "models_trained": len(jobs),
+    }
+
+
 # Map tool names to executors
 TOOL_EXECUTORS = {
     "profile_dataset": execute_profile_dataset,
@@ -308,4 +520,8 @@ TOOL_EXECUTORS = {
     "launch_training": execute_launch_training,
     "query_experiments": execute_query_experiments,
     "deploy_model": execute_deploy_model,
+    "get_prediction_template": execute_get_prediction_template,
+    "make_prediction": execute_make_prediction,
+    "get_serving_status": execute_get_serving_status,
+    "suggest_improvements": execute_suggest_improvements,
 }
