@@ -13,10 +13,27 @@ function sessionKey(datasetId: string | undefined): string {
   return `automl_agent_session_${datasetId || "global"}`;
 }
 
+function readStoredValue(key: string): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem(key) ?? sessionStorage.getItem(key);
+}
+
+function writeStoredValue(key: string, value: string) {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(key, value);
+  sessionStorage.removeItem(key);
+}
+
+function removeStoredValue(key: string) {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem(key);
+  sessionStorage.removeItem(key);
+}
+
 function loadMessages(datasetId: string | undefined): ChatMessage[] {
   if (typeof window === "undefined") return [];
   try {
-    const raw = sessionStorage.getItem(chatKey(datasetId));
+    const raw = readStoredValue(chatKey(datasetId));
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     return parsed.map((m: any) => ({ ...m, timestamp: new Date(m.timestamp) }));
@@ -27,28 +44,28 @@ function loadMessages(datasetId: string | undefined): ChatMessage[] {
 
 function saveMessages(messages: ChatMessage[], datasetId: string | undefined) {
   try {
-    sessionStorage.setItem(chatKey(datasetId), JSON.stringify(messages));
+    writeStoredValue(chatKey(datasetId), JSON.stringify(messages));
   } catch {}
 }
 
 function loadDatasetId(): string | undefined {
   if (typeof window === "undefined") return undefined;
-  return sessionStorage.getItem(DATASET_KEY) || undefined;
+  return readStoredValue(DATASET_KEY) || undefined;
 }
 
 function saveDatasetId(id: string | undefined) {
   try {
-    if (id) sessionStorage.setItem(DATASET_KEY, id);
-    else sessionStorage.removeItem(DATASET_KEY);
+    if (id) writeStoredValue(DATASET_KEY, id);
+    else removeStoredValue(DATASET_KEY);
   } catch {}
 }
 
 function getSessionId(datasetId: string | undefined): string {
   if (typeof window === "undefined") return sessionKey(datasetId);
   const key = sessionKey(datasetId);
-  const existing = sessionStorage.getItem(key);
+  const existing = readStoredValue(key);
   if (existing) return existing;
-  sessionStorage.setItem(key, key);
+  writeStoredValue(key, key);
   return key;
 }
 
@@ -131,7 +148,8 @@ export default function AgentPage() {
   async function handleReset() {
     await api.resetAgent(getSessionId(activeDataset)).catch(() => {});
     setMessages([]);
-    sessionStorage.removeItem(chatKey(activeDataset));
+    removeStoredValue(chatKey(activeDataset));
+    removeStoredValue(sessionKey(activeDataset));
   }
 
   const activeDsName = datasets.find((d) => d.id === activeDataset)?.name;
