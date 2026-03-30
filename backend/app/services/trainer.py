@@ -82,7 +82,7 @@ def _train_linear(
     metrics = _compute_metrics(y_test, y_pred, task_type)
 
     feature_importance = _get_linear_importance(model, X_train.columns)
-    model_path = _save_model(model, "linear")
+    model_path = _save_model(model, "linear", list(X_train.columns))
 
     return {
         "model_type": "linear",
@@ -132,7 +132,7 @@ def _train_xgboost(
         sorted(feature_importance.items(), key=lambda x: x[1], reverse=True)
     )
 
-    model_path = _save_model(model, "xgboost")
+    model_path = _save_model(model, "xgboost", list(X_train.columns))
 
     return {
         "model_type": "xgboost",
@@ -168,7 +168,7 @@ def _train_random_forest(
         sorted(feature_importance.items(), key=lambda x: x[1], reverse=True)
     )
 
-    model_path = _save_model(model, "random_forest")
+    model_path = _save_model(model, "random_forest", list(X_train.columns))
 
     return {
         "model_type": "random_forest",
@@ -214,12 +214,13 @@ def _get_linear_importance(model, feature_names) -> Dict[str, float]:
     return {}
 
 
-def _save_model(model: Any, model_type: str) -> str:
-    """Serialize model to disk and return the file path."""
+def _save_model(model: Any, model_type: str, feature_names: list = None) -> str:
+    """Serialize model and feature names to disk and return the file path."""
     os.makedirs(settings.MODEL_DIR, exist_ok=True)
     model_path = os.path.join(
         settings.MODEL_DIR, f"{model_type}_{int(time.time())}.pkl"
     )
+    bundle = {"model": model, "feature_names": feature_names or []}
     with open(model_path, "wb") as f:
-        pickle.dump(model, f)
+        pickle.dump(bundle, f)
     return model_path

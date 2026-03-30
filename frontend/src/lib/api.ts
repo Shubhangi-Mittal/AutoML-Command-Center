@@ -33,20 +33,13 @@ export const api = {
 
   getDataset: (id: string) => request<any>(`/api/datasets/${id}`),
 
-  setTarget: (id: string, target_column: string, task_type: string) =>
-    request(`/api/datasets/${id}/target`, {
-      method: "PUT",
-      body: JSON.stringify({ target_column, task_type }),
-    }),
-
-  deleteDataset: (id: string) =>
-    request(`/api/datasets/${id}`, { method: "DELETE" }),
-
   // Training
   launchTraining: (body: {
     dataset_id: string;
-    model_types: string[];
-    optimization_metric: string;
+    model_types?: string[];
+    optimization_metric?: string;
+    target_column?: string;
+    task_type?: string;
   }) =>
     request<any>("/api/training/launch", {
       method: "POST",
@@ -55,10 +48,10 @@ export const api = {
 
   listJobs: (datasetId?: string) =>
     request<any[]>(
-      `/api/training/jobs${datasetId ? `?dataset_id=${datasetId}` : ""}`
+      `/api/training/${datasetId ? `?dataset_id=${datasetId}` : ""}`
     ),
 
-  getJob: (id: string) => request<any>(`/api/training/jobs/${id}`),
+  getJob: (id: string) => request<any>(`/api/training/${id}`),
 
   // Experiments
   listExperiments: (datasetId?: string) =>
@@ -85,7 +78,7 @@ export const api = {
   resetAgent: (sessionId?: string) =>
     request("/api/agent/reset", {
       method: "POST",
-      body: JSON.stringify(sessionId || "default"),
+      body: JSON.stringify({ session_id: sessionId || "default" }),
     }),
 
   // Serving
@@ -94,6 +87,9 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ job_id: jobId }),
     }),
+
+  undeployModel: () =>
+    request("/api/serving/undeploy", { method: "POST" }),
 
   predict: (features: Record<string, any>) =>
     request("/api/serving/predict", {
@@ -105,7 +101,4 @@ export const api = {
 
   // Health
   health: () => request<any>("/health"),
-
-  // Available models
-  availableModels: () => request<any>("/api/models/available"),
 };

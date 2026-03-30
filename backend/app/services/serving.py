@@ -11,6 +11,7 @@ class ModelServer:
 
     def __init__(self):
         self._active_model = None
+        self._feature_names: List[str] = []
         self._model_path: Optional[str] = None
         self._job_info: Optional[Dict[str, Any]] = None
         self._deployed_at: Optional[str] = None
@@ -24,7 +25,15 @@ class ModelServer:
     def deploy(self, model_path: str, job_info: Dict[str, Any]) -> Dict[str, Any]:
         """Load a model from disk and make it active for serving."""
         with open(model_path, "rb") as f:
-            self._active_model = pickle.load(f)
+            data = pickle.load(f)
+
+        # Support both bundled (dict with model+feature_names) and raw model files
+        if isinstance(data, dict) and "model" in data:
+            self._active_model = data["model"]
+            self._feature_names = data.get("feature_names", [])
+        else:
+            self._active_model = data
+            self._feature_names = []
 
         self._model_path = model_path
         self._job_info = job_info
@@ -40,21 +49,31 @@ class ModelServer:
     def undeploy(self) -> Dict[str, str]:
         """Remove the active model."""
         self._active_model = None
+        self._feature_names = []
         self._model_path = None
         self._job_info = None
         self._deployed_at = None
         return {"status": "undeployed"}
+
+    def _align_features(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Align input DataFrame columns to match the training feature names."""
+        if not self._feature_names:
+            return df
+        # Reindex to match training columns; missing columns become 0
+        return df.reindex(columns=self._feature_names, fill_value=0)
 
     def predict(self, features: Dict[str, Any]) -> Dict[str, Any]:
         """Make a single prediction."""
         if self._active_model is None:
             raise RuntimeError("No model deployed")
 
-        df = pd.DataFrame([features])
+        df = self._align_features(pd.DataFrame([features]))
         prediction = self._active_model.predict(df)
-        result: Dict[str, Any] = {"prediction": prediction.tolist()}
+        result: Dict[str, Any] = {
+            "prediction": prediction.tolist(),
+            "model_type": self._job_info.get("model_type") if self._job_info else None,
+        }
 
-        # Add probabilities for classifiers
         if hasattr(self._active_model, "predict_proba"):
             probabilities = self._active_model.predict_proba(df)
             result["probabilities"] = probabilities.tolist()
@@ -66,7 +85,7 @@ class ModelServer:
         if self._active_model is None:
             raise RuntimeError("No model deployed")
 
-        df = pd.DataFrame(records)
+        df = self._align_features(pd.DataFrame(records))
         predictions = self._active_model.predict(df)
         result: Dict[str, Any] = {"predictions": predictions.tolist()}
 

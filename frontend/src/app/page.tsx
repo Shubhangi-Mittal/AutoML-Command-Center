@@ -83,8 +83,8 @@ export default function DashboardPage() {
         <StatusCard
           icon="🚀"
           label="Model Serving"
-          value={serving?.status === "active" ? "Active" : "No Model"}
-          color={serving?.status === "active" ? "green" : "gray"}
+          value={serving?.status === "deployed" ? "Active" : "No Model"}
+          color={serving?.status === "deployed" ? "green" : "gray"}
         />
       </div>
 

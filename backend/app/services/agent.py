@@ -1,4 +1,4 @@
-"""AI Agent with ReAct pattern using Claude API, with intent-detection fallback."""
+"""AI Agent with ReAct pattern using Claude/Groq API, with intent-detection fallback."""
 
 import json
 import re
@@ -30,8 +30,26 @@ If the user provides a dataset_id, use it. Otherwise, ask which dataset to work 
 """
 
 
+def _claude_tools_to_openai(claude_tools: list) -> list:
+    """Convert Claude tool definitions to OpenAI/Groq format."""
+    openai_tools = []
+    for tool in claude_tools:
+        openai_tools.append({
+            "type": "function",
+            "function": {
+                "name": tool["name"],
+                "description": tool["description"],
+                "parameters": tool["input_schema"],
+            },
+        })
+    return openai_tools
+
+
+OPENAI_TOOL_DEFINITIONS = _claude_tools_to_openai(TOOL_DEFINITIONS)
+
+
 class MLAgent:
-    """ReAct-style ML agent using Claude API with tool calling."""
+    """ReAct-style ML agent using Claude/Groq API with tool calling."""
 
     def __init__(self):
         self.conversations: Dict[str, List[Dict]] = {}
@@ -44,10 +62,97 @@ class MLAgent:
         db: Session,
     ) -> Dict[str, Any]:
         """Process a user message and return the agent's response."""
-        if settings.ANTHROPIC_API_KEY:
+        if settings.GROQ_API_KEY:
+            return await self._chat_with_groq(user_message, session_id, dataset_id, db)
+        elif settings.ANTHROPIC_API_KEY:
             return await self._chat_with_claude(user_message, session_id, dataset_id, db)
         else:
             return await self._chat_fallback(user_message, session_id, dataset_id, db)
+
+    async def _chat_with_groq(
+        self, user_message: str, session_id: str, dataset_id: Optional[str], db: Session,
+    ) -> Dict[str, Any]:
+        """Full ReAct loop using Groq API with tool use."""
+        from groq import Groq
+
+        client = Groq(api_key=settings.GROQ_API_KEY)
+
+        if session_id not in self.conversations:
+            self.conversations[session_id] = []
+
+        history = self.conversations[session_id]
+
+        if dataset_id:
+            user_content = f"[Active dataset ID: {dataset_id}]\n\n{user_message}"
+        else:
+            user_content = user_message
+
+        history.append({"role": "user", "content": user_content})
+
+        tool_calls_summary = []
+        max_iterations = 10
+
+        for _ in range(max_iterations):
+            messages = [{"role": "system", "content": SYSTEM_PROMPT}] + history
+
+            response = client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=messages,
+                tools=OPENAI_TOOL_DEFINITIONS,
+                tool_choice="auto",
+                max_tokens=4096,
+            )
+
+            message = response.choices[0].message
+
+            # Add assistant message to history
+            history.append(message.model_dump(exclude_none=True))
+
+            if message.tool_calls:
+                # Execute each tool call
+                for tc in message.tool_calls:
+                    tool_name = tc.function.name
+                    try:
+                        tool_input = json.loads(tc.function.arguments)
+                    except json.JSONDecodeError:
+                        tool_input = {}
+
+                    # Inject dataset_id if not provided
+                    if dataset_id and "dataset_id" not in tool_input:
+                        tool_input["dataset_id"] = dataset_id
+
+                    executor = TOOL_EXECUTORS.get(tool_name)
+                    if executor:
+                        result = await executor(db=db, **tool_input)
+                    else:
+                        result = {"error": f"Unknown tool: {tool_name}"}
+
+                    tool_calls_summary.append({
+                        "tool": tool_name,
+                        "input": tool_input,
+                        "output_summary": _summarize_result(result),
+                    })
+
+                    history.append({
+                        "role": "tool",
+                        "tool_call_id": tc.id,
+                        "content": json.dumps(result, default=str),
+                    })
+            else:
+                final_text = message.content or ""
+
+                if len(history) > 20:
+                    history[:] = history[-16:]
+
+                return {
+                    "response": final_text,
+                    "tool_calls": tool_calls_summary,
+                }
+
+        return {
+            "response": "I've reached the maximum number of steps. Please try a simpler request.",
+            "tool_calls": tool_calls_summary,
+        }
 
     async def _chat_with_claude(
         self, user_message: str, session_id: str, dataset_id: Optional[str], db: Session,

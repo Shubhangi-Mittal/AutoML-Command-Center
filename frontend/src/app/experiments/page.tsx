@@ -196,7 +196,7 @@ export default function ExperimentsPage() {
 }
 
 function TrainResults({ result, taskType }: { result: TrainResult; taskType: string }) {
-  const completed = result.results.filter((r) => r.status === "completed");
+  const jobs = result.jobs;
   const isClassification = taskType === "classification";
   const metricKeys = isClassification
     ? ["accuracy", "f1", "precision", "recall"]
@@ -215,12 +215,12 @@ function TrainResults({ result, taskType }: { result: TrainResult; taskType: str
           ))}
         </div>
         <p className="text-xs text-gray-500 mt-2">
-          {result.feature_engineering.n_features} features · {result.feature_engineering.n_train} train / {result.feature_engineering.n_test} test samples
+          {result.feature_engineering.feature_count} features · {result.feature_engineering.train_size} train / {result.feature_engineering.test_size} test samples
         </p>
       </div>
 
       {/* Comparison table */}
-      {completed.length > 0 && (
+      {jobs.length > 0 && (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
@@ -234,8 +234,8 @@ function TrainResults({ result, taskType }: { result: TrainResult; taskType: str
               </tr>
             </thead>
             <tbody>
-              {completed.map((r) => {
-                const isBest = result.best_model?.job_id === r.job_id;
+              {jobs.map((r) => {
+                const isBest = result.best_job_id === r.job_id;
                 return (
                   <tr
                     key={r.job_id}
@@ -248,7 +248,7 @@ function TrainResults({ result, taskType }: { result: TrainResult; taskType: str
                       </td>
                     ))}
                     <td className="text-right py-2 px-3 text-gray-500">
-                      {r.metrics?.training_duration?.toFixed(1)}s
+                      {r.training_duration_seconds?.toFixed(1)}s
                     </td>
                     <td className="text-center py-2 px-3">
                       {isBest && <span className="text-emerald-600 font-bold">🏆</span>}
@@ -261,20 +261,13 @@ function TrainResults({ result, taskType }: { result: TrainResult; taskType: str
         </div>
       )}
 
-      {/* Failed models */}
-      {result.results.filter((r) => r.status === "failed").map((r) => (
-        <div key={r.job_id} className="mt-2 text-xs text-red-600">
-          {r.model_type} failed: {r.error}
-        </div>
-      ))}
-
       {/* Bar chart visualization */}
-      {completed.length > 0 && (
+      {jobs.length > 0 && (
         <div className="mt-6">
           <h4 className="text-xs font-semibold text-gray-600 mb-3">Visual Comparison</h4>
           <div className="space-y-3">
             {metricKeys.filter(k => k !== "confusion_matrix").map((metricKey) => {
-              const values = completed.map((r) => r.metrics?.[metricKey] ?? 0);
+              const values = jobs.map((r) => r.metrics?.[metricKey] ?? 0);
               const maxVal = Math.max(...values.map(Math.abs), 0.001);
               const lowerIsBetter = ["rmse", "mae"].includes(metricKey);
 
@@ -282,10 +275,10 @@ function TrainResults({ result, taskType }: { result: TrainResult; taskType: str
                 <div key={metricKey}>
                   <p className="text-xs text-gray-500 mb-1">{metricKey.toUpperCase()}{lowerIsBetter ? " (lower = better)" : ""}</p>
                   <div className="space-y-1">
-                    {completed.map((r) => {
+                    {jobs.map((r) => {
                       const val = r.metrics?.[metricKey] ?? 0;
                       const pct = Math.abs(val) / maxVal * 100;
-                      const isBest = result.best_model?.job_id === r.job_id;
+                      const isBest = result.best_job_id === r.job_id;
                       return (
                         <div key={r.job_id} className="flex items-center gap-2">
                           <span className="text-xs text-gray-600 w-28 truncate">{r.model_type}</span>

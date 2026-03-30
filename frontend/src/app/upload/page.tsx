@@ -1,10 +1,18 @@
 "use client";
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { Dataset, ColumnProfile } from "@/types";
 
 export default function UploadPage() {
+  return (
+    <Suspense fallback={<div className="p-6 text-gray-500">Loading...</div>}>
+      <UploadPageContent />
+    </Suspense>
+  );
+}
+
+function UploadPageContent() {
   const searchParams = useSearchParams();
   const preselectedId = searchParams.get("id");
 

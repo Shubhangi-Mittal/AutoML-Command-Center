@@ -84,25 +84,26 @@ export interface Experiment {
 }
 
 export interface TrainResult {
+  dataset_id: string;
   experiment_id: string;
-  results: {
-    job_id: string;
-    model_type: string;
-    status: string;
-    metrics?: Record<string, number>;
-    error?: string;
-  }[];
-  best_model: {
+  task_type: string;
+  target_column: string;
+  best_job_id: string;
+  feature_engineering: {
+    transformations: string[];
+    feature_count: number;
+    feature_names: string[];
+    train_size: number;
+    test_size: number;
+  };
+  jobs: {
     job_id: string;
     model_type: string;
     metrics: Record<string, number>;
-  } | null;
-  feature_engineering: {
-    transformations: string[];
-    n_features: number;
-    n_train: number;
-    n_test: number;
-  };
+    feature_importance?: Record<string, number>;
+    training_duration_seconds: number;
+    model_path?: string;
+  }[];
 }
 
 export interface ChatMessage {

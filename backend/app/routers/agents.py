@@ -44,7 +44,13 @@ def reset_agent(request: ResetRequest):
 def agent_status():
     has_api_key = bool(get_agent() and True)
     from app.config import settings
+    if settings.GROQ_API_KEY:
+        mode = "groq"
+    elif settings.ANTHROPIC_API_KEY:
+        mode = "claude"
+    else:
+        mode = "fallback"
     return {
-        "mode": "claude" if settings.ANTHROPIC_API_KEY else "fallback",
-        "api_key_set": bool(settings.ANTHROPIC_API_KEY),
+        "mode": mode,
+        "api_key_set": bool(settings.GROQ_API_KEY or settings.ANTHROPIC_API_KEY),
     }

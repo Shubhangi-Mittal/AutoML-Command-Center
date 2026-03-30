@@ -65,7 +65,7 @@ export default function DeployPage() {
 
   async function handleUndeploy() {
     try {
-      await fetch(`${process.env.NEXT_PUBLIC_API_URL || ""}/api/serving/undeploy`, { method: "POST" });
+      await api.undeployModel();
       await loadStatus();
     } catch {}
   }
@@ -79,7 +79,7 @@ export default function DeployPage() {
 
       {/* Current Status */}
       <div className={`rounded-lg border p-5 mb-6 ${
-        status?.status === "active"
+        status?.status === "deployed"
           ? "bg-emerald-50 border-emerald-200"
           : "bg-gray-50 border-gray-200"
       }`}>
@@ -87,11 +87,11 @@ export default function DeployPage() {
           <div>
             <h2 className="font-semibold text-gray-900 flex items-center gap-2">
               <span className={`w-2.5 h-2.5 rounded-full ${
-                status?.status === "active" ? "bg-emerald-500 animate-pulse" : "bg-gray-300"
+                status?.status === "deployed" ? "bg-emerald-500 animate-pulse" : "bg-gray-300"
               }`} />
-              Model Status: {status?.status === "active" ? "Active" : "No Model Deployed"}
+              Model Status: {status?.status === "deployed" ? "Active" : "No Model Deployed"}
             </h2>
-            {status?.status === "active" && (
+            {status?.status === "deployed" && (
               <div className="mt-2 text-sm text-gray-600 space-y-0.5">
                 <p>Model: <strong>{status.model_type}</strong></p>
                 <p>Job ID: <code className="text-xs bg-white px-1 py-0.5 rounded">{status.job_id}</code></p>
@@ -105,7 +105,7 @@ export default function DeployPage() {
               </div>
             )}
           </div>
-          {status?.status === "active" && (
+          {status?.status === "deployed" && (
             <button
               onClick={handleUndeploy}
               className="text-xs text-red-500 hover:text-red-700 border border-red-200 rounded px-2 py-1"
@@ -172,7 +172,7 @@ export default function DeployPage() {
       </div>
 
       {/* Test Predictions */}
-      {status?.status === "active" && (
+      {status?.status === "deployed" && (
         <div className="bg-white rounded-lg border border-gray-200 p-5 mb-6">
           <h3 className="text-sm font-semibold text-gray-700 mb-3">Test Prediction</h3>
           <p className="text-xs text-gray-500 mb-3">
