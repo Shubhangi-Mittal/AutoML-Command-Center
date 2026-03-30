@@ -88,7 +88,8 @@ export interface TrainResult {
   experiment_id: string;
   task_type: string;
   target_column: string;
-  best_job_id: string;
+  best_job_id?: string;
+  optimization_metric?: string;
   feature_engineering: {
     transformations: string[];
     feature_count: number;
@@ -116,7 +117,19 @@ export interface ChatMessage {
 export interface ServingStatus {
   status: string;
   job_id?: string;
+  dataset_id?: string;
+  dataset_name?: string;
+  target_column?: string;
   model_type?: string;
   metrics?: Record<string, number>;
   deployed_at?: string;
+}
+
+export interface PredictionTemplate {
+  dataset_id: string;
+  dataset_name: string;
+  target_column: string | null;
+  task_type: string | null;
+  feature_columns: string[];
+  sample_input: Record<string, any>;
 }

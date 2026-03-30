@@ -5,8 +5,10 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.models.dataset import Dataset
 from app.models.job import TrainingJob
 from app.services.serving import ModelServer
+from app.services.trainer import resolve_model_artifact
 
 
 router = APIRouter()
@@ -32,18 +34,10 @@ def deploy_model(request: DeployRequest, db: Session = Depends(get_db)):
     if job.status != "completed":
         raise HTTPException(status_code=400, detail="Can only deploy completed jobs")
 
-    # Find the model path from the models directory
-    import os, glob
-    from app.config import settings
+    model_path = resolve_model_artifact(job.model_type, job.id)
+    if not model_path:
+        raise HTTPException(status_code=404, detail=f"No model file found for {job.model_type}")
 
-    model_type = job.model_type
-    pattern = os.path.join(settings.MODEL_DIR, f"{model_type}_*.pkl")
-    model_files = sorted(glob.glob(pattern), key=os.path.getmtime, reverse=True)
-
-    if not model_files:
-        raise HTTPException(status_code=404, detail=f"No model file found for {model_type}")
-
-    model_path = model_files[0]
     job_info = {
         "job_id": job.id,
         "model_type": job.model_type,
@@ -81,6 +75,43 @@ def predict_batch(request: BatchPredictionRequest):
 
 
 @router.get("/status")
-def serving_status():
+def serving_status(db: Session = Depends(get_db)):
     server = ModelServer.get_instance()
-    return server.get_status()
+    status = server.get_status()
+
+    if status.get("status") == "deployed" and status.get("job_id"):
+        job = db.query(TrainingJob).filter(TrainingJob.id == status["job_id"]).first()
+        if job:
+            dataset = db.query(Dataset).filter(Dataset.id == job.dataset_id).first()
+            status["dataset_id"] = job.dataset_id
+            if dataset:
+                status["dataset_name"] = dataset.name
+                status["target_column"] = dataset.target_column
+
+    return status
+
+
+@router.get("/template/{dataset_id}")
+def get_prediction_template(dataset_id: str, db: Session = Depends(get_db)):
+    dataset = db.query(Dataset).filter(Dataset.id == dataset_id).first()
+    if not dataset:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+
+    import pandas as pd
+
+    df = pd.read_csv(dataset.file_path, encoding="utf-8-sig", nrows=1)
+    feature_cols = [col for col in df.columns if col != dataset.target_column]
+    sample_row = df[feature_cols].iloc[0].to_dict() if len(df.index) else {}
+
+    for key, value in sample_row.items():
+        if pd.isna(value):
+            sample_row[key] = None
+
+    return {
+        "dataset_id": dataset.id,
+        "dataset_name": dataset.name,
+        "target_column": dataset.target_column,
+        "task_type": dataset.task_type,
+        "feature_columns": feature_cols,
+        "sample_input": sample_row,
+    }

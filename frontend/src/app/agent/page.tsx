@@ -9,6 +9,10 @@ function chatKey(datasetId: string | undefined): string {
   return `automl_agent_chat_${datasetId || "global"}`;
 }
 
+function sessionKey(datasetId: string | undefined): string {
+  return `automl_agent_session_${datasetId || "global"}`;
+}
+
 function loadMessages(datasetId: string | undefined): ChatMessage[] {
   if (typeof window === "undefined") return [];
   try {
@@ -37,6 +41,15 @@ function saveDatasetId(id: string | undefined) {
     if (id) sessionStorage.setItem(DATASET_KEY, id);
     else sessionStorage.removeItem(DATASET_KEY);
   } catch {}
+}
+
+function getSessionId(datasetId: string | undefined): string {
+  if (typeof window === "undefined") return sessionKey(datasetId);
+  const key = sessionKey(datasetId);
+  const existing = sessionStorage.getItem(key);
+  if (existing) return existing;
+  sessionStorage.setItem(key, key);
+  return key;
 }
 
 export default function AgentPage() {
@@ -87,7 +100,7 @@ export default function AgentPage() {
     setSending(true);
 
     try {
-      const result = await api.chat(text, "default", activeDataset);
+      const result = await api.chat(text, getSessionId(activeDataset), activeDataset);
       const assistantMsg: ChatMessage = {
         role: "assistant",
         content: result.response,
@@ -116,7 +129,7 @@ export default function AgentPage() {
   }
 
   async function handleReset() {
-    await api.resetAgent("default").catch(() => {});
+    await api.resetAgent(getSessionId(activeDataset)).catch(() => {});
     setMessages([]);
     sessionStorage.removeItem(chatKey(activeDataset));
   }

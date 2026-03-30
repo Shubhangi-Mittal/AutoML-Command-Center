@@ -64,7 +64,7 @@ def train_single_model_task(
         # Train model
         result = train_model(
             X_train, X_test, y_train, y_test,
-            model_type, task_type, hyperparameters or {},
+            model_type, task_type, hyperparameters or {}, artifact_id=job_id,
         )
 
         _publish_progress(dataset_id, job_id, model_type, "running", "Saving results...")

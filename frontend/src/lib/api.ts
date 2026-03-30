@@ -7,7 +7,9 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     ...options,
   });
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    const err = await res
+      .json()
+      .catch(async () => ({ detail: (await res.text().catch(() => "")) || res.statusText }));
     throw new Error(err.detail || `Request failed: ${res.status}`);
   }
   return res.json();
@@ -98,6 +100,8 @@ export const api = {
     }),
 
   servingStatus: () => request<any>("/api/serving/status"),
+  getPredictionTemplate: (datasetId: string) =>
+    request<any>(`/api/serving/template/${datasetId}`),
 
   // Health
   health: () => request<any>("/health"),

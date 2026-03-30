@@ -1,12 +1,12 @@
 "use client";
 import { useState, useEffect } from "react";
 import { api } from "@/lib/api";
-import { Dataset, TrainResult, TrainingJob } from "@/types";
+import { Dataset, Experiment, TrainResult, TrainingJob } from "@/types";
 
 export default function ExperimentsPage() {
   const [datasets, setDatasets] = useState<Dataset[]>([]);
   const [selectedDataset, setSelectedDataset] = useState<Dataset | null>(null);
-  const [experiments, setExperiments] = useState<any[]>([]);
+  const [experiments, setExperiments] = useState<Experiment[]>([]);
   const [selectedExp, setSelectedExp] = useState<any>(null);
   const [training, setTraining] = useState(false);
   const [trainResult, setTrainResult] = useState<TrainResult | null>(null);
@@ -24,6 +24,11 @@ export default function ExperimentsPage() {
     }
   }, [selectedDataset]);
 
+  useEffect(() => {
+    if (!selectedDataset?.task_type) return;
+    setMetric(selectedDataset.task_type === "regression" ? "rmse" : "f1");
+  }, [selectedDataset?.task_type]);
+
   async function handleTrain() {
     if (!selectedDataset?.target_column) {
       setError("Please set a target column first (Upload page → select dataset)");
@@ -40,6 +45,9 @@ export default function ExperimentsPage() {
       });
       setTrainResult(result);
       api.listExperiments(selectedDataset.id).then(setExperiments).catch(() => {});
+      if (result.experiment_id) {
+        loadExperiment(result.experiment_id);
+      }
     } catch (e: any) {
       setError(e.message);
     } finally {
@@ -49,7 +57,7 @@ export default function ExperimentsPage() {
 
   async function loadExperiment(expId: string) {
     try {
-      const data = await api.getExperiment(expId);
+      const data = await api.compareModels(expId);
       setSelectedExp(data);
     } catch {}
   }
@@ -309,7 +317,7 @@ function TrainResults({ result, taskType }: { result: TrainResult; taskType: str
 
 function ExperimentDetail({ data, taskType }: { data: any; taskType: string }) {
   const jobs: TrainingJob[] = data.jobs || [];
-  const completed = jobs.filter((j) => j.status === "completed");
+  const completed = jobs;
   const isClassification = taskType === "classification";
   const metricKeys = isClassification
     ? ["accuracy", "f1", "precision", "recall"]
@@ -318,7 +326,7 @@ function ExperimentDetail({ data, taskType }: { data: any; taskType: string }) {
   return (
     <div className="bg-white rounded-lg border border-gray-200 p-5 mb-6">
       <h3 className="text-sm font-semibold text-gray-700 mb-4">
-        {data.experiment?.name || "Experiment Detail"}
+        {data.name || "Experiment Detail"}
       </h3>
 
       {completed.length > 0 && (

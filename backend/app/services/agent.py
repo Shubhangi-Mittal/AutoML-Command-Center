@@ -99,6 +99,7 @@ class MLAgent:
         client = self._get_groq_client(Groq)
 
         history = self._get_history(session_id)
+        initial_history_length = len(history)
         history.append({"role": "user", "content": self._build_user_content(user_message, dataset_id)})
 
         tool_calls_summary = []
@@ -107,13 +108,30 @@ class MLAgent:
         for _ in range(max_iterations):
             messages = [{"role": "system", "content": SYSTEM_PROMPT}] + history
 
-            response = client.chat.completions.create(
-                model="llama-3.3-70b-versatile",
-                messages=messages,
-                tools=OPENAI_TOOL_DEFINITIONS,
-                tool_choice="auto",
-                max_tokens=4096,
-            )
+            try:
+                response = client.chat.completions.create(
+                    model="llama-3.3-70b-versatile",
+                    messages=messages,
+                    tools=OPENAI_TOOL_DEFINITIONS,
+                    tool_choice="auto",
+                    max_tokens=4096,
+                )
+            except Exception as exc:
+                history[:] = history[:initial_history_length]
+
+                if settings.ANTHROPIC_API_KEY:
+                    return await self._chat_with_claude(user_message, session_id, dataset_id, db)
+
+                if self._is_groq_tool_failure(exc):
+                    return await self._chat_fallback(user_message, session_id, dataset_id, db)
+
+                return {
+                    "response": (
+                        "The Groq agent hit a provider-side tool-calling error, so I switched to the local workflow. "
+                        "Please try the request again if you'd like."
+                    ),
+                    "tool_calls": [],
+                }
 
             message = response.choices[0].message
 
@@ -471,6 +489,10 @@ class MLAgent:
     def _trim_history(self, history: List[Dict[str, Any]]) -> None:
         if len(history) > MAX_HISTORY_MESSAGES:
             history[:] = history[-MAX_HISTORY_MESSAGES:]
+
+    def _is_groq_tool_failure(self, exc: Exception) -> bool:
+        message = str(exc).lower()
+        return "tool_use_failed" in message or "failed to call a function" in message
 
 
 def _summarize_result(result: Dict[str, Any]) -> str:

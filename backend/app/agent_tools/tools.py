@@ -9,7 +9,7 @@ from app.models.job import TrainingJob
 from app.models.experiment import Experiment
 from app.services.profiler import profile_dataset
 from app.services.feature_engine import FeatureEngine
-from app.services.trainer import train_all_models
+from app.services.trainer import finalize_model_artifact, resolve_model_artifact, train_all_models
 from app.services.experiment_tracker import ExperimentTracker
 from app.services.serving import ModelServer
 
@@ -278,12 +278,15 @@ async def execute_launch_training(
         db.commit()
         db.refresh(job)
 
+        model_path = finalize_model_artifact(result["model_path"], result["model_type"], job.id)
+
         jobs_summary.append({
             "job_id": job.id,
             "model_type": result["model_type"],
             "metrics": result["metrics"],
             "top_features": dict(list(result.get("feature_importance", {}).items())[:5]),
             "training_duration_seconds": result["training_duration_seconds"],
+            "model_path": model_path,
         })
 
     # Complete experiment
@@ -339,25 +342,23 @@ async def execute_deploy_model(
     if not job:
         return {"error": f"Job {job_id} not found"}
 
-    import os, glob
-    from app.config import settings
-
-    pattern = os.path.join(settings.MODEL_DIR, f"{job.model_type}_*.pkl")
-    model_files = sorted(glob.glob(pattern), key=os.path.getmtime, reverse=True)
-    if not model_files:
+    model_path = resolve_model_artifact(job.model_type, job.id)
+    if not model_path:
         return {"error": f"No model file found for {job.model_type}"}
 
     server = ModelServer.get_instance()
-    result = server.deploy(model_files[0], {
+    result = server.deploy(model_path, {
         "job_id": job.id,
         "model_type": job.model_type,
         "metrics": job.metrics,
+        "dataset_id": job.dataset_id,
     })
 
     return {
         "status": "deployed",
         "model_type": job.model_type,
         "job_id": job.id,
+        "dataset_id": job.dataset_id,
         "metrics": job.metrics,
         "deployed_at": result["deployed_at"],
     }

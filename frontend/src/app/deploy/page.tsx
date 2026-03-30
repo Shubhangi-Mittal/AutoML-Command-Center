@@ -1,17 +1,18 @@
 "use client";
 import { useState, useEffect } from "react";
 import { api } from "@/lib/api";
-import { ServingStatus, Dataset } from "@/types";
+import { Dataset, PredictionTemplate, ServingStatus, TrainingJob } from "@/types";
 
 export default function DeployPage() {
   const [status, setStatus] = useState<ServingStatus | null>(null);
   const [datasets, setDatasets] = useState<Dataset[]>([]);
   const [selectedDataset, setSelectedDataset] = useState<string>("");
-  const [jobs, setJobs] = useState<any[]>([]);
+  const [jobs, setJobs] = useState<TrainingJob[]>([]);
   const [deploying, setDeploying] = useState(false);
   const [predicting, setPredicting] = useState(false);
   const [featureInput, setFeatureInput] = useState("{}");
   const [prediction, setPrediction] = useState<any>(null);
+  const [template, setTemplate] = useState<PredictionTemplate | null>(null);
   const [error, setError] = useState("");
   const [deployError, setDeployError] = useState("");
 
@@ -23,8 +24,12 @@ export default function DeployPage() {
   useEffect(() => {
     if (selectedDataset) {
       api.listJobs(selectedDataset).then((j) => {
-        setJobs(j.filter((job: any) => job.status === "completed"));
+        setJobs(j.filter((job: TrainingJob) => job.status === "completed"));
       }).catch(() => {});
+      api.getPredictionTemplate(selectedDataset).then(setTemplate).catch(() => setTemplate(null));
+    } else {
+      setJobs([]);
+      setTemplate(null);
     }
   }, [selectedDataset]);
 
@@ -32,6 +37,9 @@ export default function DeployPage() {
     try {
       const s = await api.servingStatus();
       setStatus(s);
+      if (s?.dataset_id) {
+        setSelectedDataset(s.dataset_id);
+      }
     } catch {}
   }
 
@@ -70,6 +78,12 @@ export default function DeployPage() {
     } catch {}
   }
 
+  function loadSampleInput() {
+    if (!template) return;
+    setFeatureInput(JSON.stringify(template.sample_input, null, 2));
+    setError("");
+  }
+
   return (
     <div className="p-6 max-w-4xl mx-auto">
       <h1 className="text-2xl font-bold text-gray-900 mb-1">Deploy & Predict</h1>
@@ -94,6 +108,8 @@ export default function DeployPage() {
             {status?.status === "deployed" && (
               <div className="mt-2 text-sm text-gray-600 space-y-0.5">
                 <p>Model: <strong>{status.model_type}</strong></p>
+                {status.dataset_name && <p>Dataset: <strong>{status.dataset_name}</strong></p>}
+                {status.target_column && <p>Target: <strong>{status.target_column}</strong></p>}
                 <p>Job ID: <code className="text-xs bg-white px-1 py-0.5 rounded">{status.job_id}</code></p>
                 {status.metrics && (
                   <p>Metrics: {Object.entries(status.metrics)
@@ -179,6 +195,20 @@ export default function DeployPage() {
             Enter feature values as JSON. Keys must match the training feature names.
           </p>
 
+          {template && (
+            <div className="mb-3 flex items-center justify-between rounded-lg border border-blue-100 bg-blue-50 px-3 py-2">
+              <p className="text-xs text-blue-700">
+                Sample payload ready for {template.dataset_name}
+              </p>
+              <button
+                onClick={loadSampleInput}
+                className="text-xs font-medium text-blue-700 hover:text-blue-900"
+              >
+                Load Sample JSON
+              </button>
+            </div>
+          )}
+
           <textarea
             value={featureInput}
             onChange={(e) => setFeatureInput(e.target.value)}
@@ -211,7 +241,7 @@ export default function DeployPage() {
               <div className="font-mono text-sm text-emerald-900">
                 {(() => {
                   const ds = datasets.find((d) => d.id === selectedDataset);
-                  const targetName = ds?.target_column;
+                  const targetName = prediction.target_column || ds?.target_column;
                   return targetName ? (
                     <p>Target: <strong>{targetName}</strong> = <strong>{JSON.stringify(prediction.prediction)}</strong></p>
                   ) : (

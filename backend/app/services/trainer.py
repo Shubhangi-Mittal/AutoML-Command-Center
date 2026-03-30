@@ -30,17 +30,18 @@ def train_model(
     model_type: str,
     task_type: str,
     hyperparameters: Dict[str, Any] = None,
+    artifact_id: str = None,
 ) -> Dict[str, Any]:
     """Train a single model and return results with metrics."""
     hyperparameters = hyperparameters or {}
     start_time = time.time()
 
     if model_type == "linear":
-        result = _train_linear(X_train, X_test, y_train, y_test, task_type, hyperparameters)
+        result = _train_linear(X_train, X_test, y_train, y_test, task_type, hyperparameters, artifact_id)
     elif model_type == "xgboost":
-        result = _train_xgboost(X_train, X_test, y_train, y_test, task_type, hyperparameters)
+        result = _train_xgboost(X_train, X_test, y_train, y_test, task_type, hyperparameters, artifact_id)
     elif model_type == "random_forest":
-        result = _train_random_forest(X_train, X_test, y_train, y_test, task_type, hyperparameters)
+        result = _train_random_forest(X_train, X_test, y_train, y_test, task_type, hyperparameters, artifact_id)
     else:
         raise ValueError(f"Unknown model type: {model_type}")
 
@@ -55,6 +56,7 @@ def train_all_models(
     y_test: pd.Series,
     task_type: str,
     model_types: List[str] = None,
+    artifact_ids: Dict[str, str] = None,
 ) -> List[Dict[str, Any]]:
     """Train multiple model types and return all results."""
     if model_types is None:
@@ -62,14 +64,22 @@ def train_all_models(
 
     results = []
     for model_type in model_types:
-        result = train_model(X_train, X_test, y_train, y_test, model_type, task_type)
+        result = train_model(
+            X_train,
+            X_test,
+            y_train,
+            y_test,
+            model_type,
+            task_type,
+            artifact_id=(artifact_ids or {}).get(model_type),
+        )
         results.append(result)
 
     return results
 
 
 def _train_linear(
-    X_train, X_test, y_train, y_test, task_type, hyperparameters
+    X_train, X_test, y_train, y_test, task_type, hyperparameters, artifact_id
 ) -> Dict[str, Any]:
     """Train a linear model (LogisticRegression or Ridge)."""
     if task_type == "classification":
@@ -82,7 +92,7 @@ def _train_linear(
     metrics = _compute_metrics(y_test, y_pred, task_type)
 
     feature_importance = _get_linear_importance(model, X_train.columns)
-    model_path = _save_model(model, "linear", list(X_train.columns))
+    model_path = _save_model(model, "linear", list(X_train.columns), artifact_id=artifact_id)
 
     return {
         "model_type": "linear",
@@ -94,7 +104,7 @@ def _train_linear(
 
 
 def _train_xgboost(
-    X_train, X_test, y_train, y_test, task_type, hyperparameters
+    X_train, X_test, y_train, y_test, task_type, hyperparameters, artifact_id
 ) -> Dict[str, Any]:
     """Train an XGBoost model with early stopping."""
     defaults = {
@@ -132,7 +142,7 @@ def _train_xgboost(
         sorted(feature_importance.items(), key=lambda x: x[1], reverse=True)
     )
 
-    model_path = _save_model(model, "xgboost", list(X_train.columns))
+    model_path = _save_model(model, "xgboost", list(X_train.columns), artifact_id=artifact_id)
 
     return {
         "model_type": "xgboost",
@@ -144,7 +154,7 @@ def _train_xgboost(
 
 
 def _train_random_forest(
-    X_train, X_test, y_train, y_test, task_type, hyperparameters
+    X_train, X_test, y_train, y_test, task_type, hyperparameters, artifact_id
 ) -> Dict[str, Any]:
     """Train a Random Forest model."""
     defaults = {"n_estimators": 100, "max_depth": 10, "random_state": 42}
@@ -168,7 +178,7 @@ def _train_random_forest(
         sorted(feature_importance.items(), key=lambda x: x[1], reverse=True)
     )
 
-    model_path = _save_model(model, "random_forest", list(X_train.columns))
+    model_path = _save_model(model, "random_forest", list(X_train.columns), artifact_id=artifact_id)
 
     return {
         "model_type": "random_forest",
@@ -214,13 +224,53 @@ def _get_linear_importance(model, feature_names) -> Dict[str, float]:
     return {}
 
 
-def _save_model(model: Any, model_type: str, feature_names: list = None) -> str:
+def _save_model(
+    model: Any,
+    model_type: str,
+    feature_names: list = None,
+    artifact_id: str = None,
+) -> str:
     """Serialize model and feature names to disk and return the file path."""
     os.makedirs(settings.MODEL_DIR, exist_ok=True)
-    model_path = os.path.join(
-        settings.MODEL_DIR, f"{model_type}_{int(time.time())}.pkl"
-    )
+    filename_parts = [model_type, str(int(time.time()))]
+    if artifact_id:
+        filename_parts.append(artifact_id)
+    model_path = os.path.join(settings.MODEL_DIR, f"{'_'.join(filename_parts)}.pkl")
     bundle = {"model": model, "feature_names": feature_names or []}
     with open(model_path, "wb") as f:
         pickle.dump(bundle, f)
     return model_path
+
+
+def finalize_model_artifact(model_path: str, model_type: str, artifact_id: str) -> str:
+    """Rename an existing artifact so it can be resolved deterministically later."""
+    if not model_path or not os.path.exists(model_path) or not artifact_id:
+        return model_path
+
+    target_path = os.path.join(settings.MODEL_DIR, f"{model_type}_{artifact_id}.pkl")
+    if model_path == target_path:
+        return model_path
+
+    os.replace(model_path, target_path)
+    return target_path
+
+
+def resolve_model_artifact(model_type: str, artifact_id: str = None) -> str | None:
+    """Resolve a model artifact, preferring an exact job-specific file when available."""
+    if not os.path.isdir(settings.MODEL_DIR):
+        return None
+
+    if artifact_id:
+        exact_path = os.path.join(settings.MODEL_DIR, f"{model_type}_{artifact_id}.pkl")
+        if os.path.exists(exact_path):
+            return exact_path
+
+    prefix = f"{model_type}_"
+    candidates = [
+        os.path.join(settings.MODEL_DIR, name)
+        for name in os.listdir(settings.MODEL_DIR)
+        if name.startswith(prefix) and name.endswith(".pkl")
+    ]
+    if not candidates:
+        return None
+    return max(candidates, key=os.path.getmtime)

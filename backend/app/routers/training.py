@@ -13,7 +13,7 @@ from app.database import get_db
 from app.models.dataset import Dataset
 from app.models.job import TrainingJob
 from app.services.feature_engine import FeatureEngine
-from app.services.trainer import train_model, train_all_models
+from app.services.trainer import finalize_model_artifact, train_model, train_all_models
 from app.services.experiment_tracker import ExperimentTracker
 
 
@@ -26,6 +26,7 @@ class TrainRequest(BaseModel):
     task_type: Optional[str] = None
     model_types: Optional[List[str]] = None
     experiment_id: Optional[str] = None
+    optimization_metric: Optional[str] = None
     async_mode: Optional[bool] = False
 
 
@@ -52,7 +53,7 @@ def launch_training(request: TrainRequest, db: Session = Depends(get_db)):
         experiment = tracker.create_experiment(
             dataset_id=dataset.id,
             name=f"{dataset.name} - {', '.join(model_types)}",
-            optimization_metric="f1" if task_type == "classification" else "rmse",
+            optimization_metric=request.optimization_metric or ("f1" if task_type == "classification" else "rmse"),
         )
         experiment_id = experiment.id
 
@@ -132,20 +133,26 @@ def _launch_sync(dataset, target_col, task_type, model_types, experiment_id, db)
         db.commit()
         db.refresh(job)
 
+        model_path = finalize_model_artifact(result["model_path"], result["model_type"], job.id)
+
         jobs.append({
             "job_id": job.id,
             "model_type": result["model_type"],
             "metrics": result["metrics"],
             "feature_importance": result.get("feature_importance"),
             "training_duration_seconds": result["training_duration_seconds"],
-            "model_path": result["model_path"],
+            "model_path": model_path,
         })
 
     # Auto-complete experiment
+    best_job_id = None
+    optimization_metric = "f1" if task_type == "classification" else "rmse"
     if experiment_id:
         tracker = ExperimentTracker(db)
         try:
-            tracker.complete_experiment(experiment_id)
+            experiment = tracker.complete_experiment(experiment_id)
+            best_job_id = experiment.best_job_id
+            optimization_metric = experiment.optimization_metric or optimization_metric
         except ValueError:
             pass
 
@@ -154,6 +161,8 @@ def _launch_sync(dataset, target_col, task_type, model_types, experiment_id, db)
         "experiment_id": experiment_id,
         "task_type": task_type,
         "target_column": target_col,
+        "best_job_id": best_job_id,
+        "optimization_metric": optimization_metric,
         "async": False,
         "feature_engineering": metadata,
         "jobs": jobs,
