@@ -9,7 +9,6 @@ export default function DashboardPage() {
   const [experiments, setExperiments] = useState<Experiment[]>([]);
   const [serving, setServing] = useState<ServingStatus | null>(null);
   const [backendStatus, setBackendStatus] = useState<"loading" | "ok" | "error">("loading");
-  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     loadDashboard();
@@ -31,22 +30,7 @@ export default function DashboardPage() {
       if (status.status === "fulfilled") setServing(status.value);
     } catch {
       setBackendStatus("error");
-    } finally {
-      setLoading(false);
     }
-  }
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen p-6">
-        <div className="glass-card rounded-[2rem] p-10 text-center max-w-md w-full">
-          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-3xl bg-sky-100 text-3xl">⚙️</div>
-          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-sky-600 mx-auto mt-5" />
-          <p className="mt-4 text-slate-600 text-sm">Connecting to backend...</p>
-          <p className="mt-1 text-slate-400 text-xs">May take ~30s on free tier</p>
-        </div>
-      </div>
-    );
   }
 
   const completedExps = experiments.filter((e) => e.status === "completed");
@@ -63,6 +47,12 @@ export default function DashboardPage() {
           <p className="text-slate-600 text-sm md:text-base mt-4 max-w-2xl leading-7">
             Upload data, explore quality, run model experiments, deploy a winner, and steer the workflow with an AI copilot that remembers context per dataset.
           </p>
+          {backendStatus === "loading" && (
+            <div className="mt-5 inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-4 py-2 text-xs font-medium text-amber-700">
+              <span className="h-2 w-2 animate-pulse rounded-full bg-amber-500" />
+              Checking backend connection...
+            </div>
+          )}
           <div className="flex flex-wrap gap-3 mt-6">
             <Link href="/upload" className="rounded-2xl bg-sky-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-sky-700">
               Upload Dataset
@@ -79,8 +69,8 @@ export default function DashboardPage() {
         <StatusCard
           icon="🔗"
           label="Backend"
-          value={backendStatus === "ok" ? "Connected" : "Offline"}
-          color={backendStatus === "ok" ? "green" : "red"}
+          value={backendStatus === "loading" ? "Checking" : backendStatus === "ok" ? "Connected" : "Offline"}
+          color={backendStatus === "loading" ? "amber" : backendStatus === "ok" ? "green" : "red"}
         />
         <StatusCard
           icon="📁"
@@ -224,6 +214,7 @@ function StatusCard({
   color: string;
 }) {
   const colorMap: Record<string, string> = {
+    amber: "bg-amber-50 text-amber-700 border-amber-200",
     green: "bg-emerald-50 text-emerald-700 border-emerald-200",
     blue: "bg-blue-50 text-blue-700 border-blue-200",
     purple: "bg-purple-50 text-purple-700 border-purple-200",
