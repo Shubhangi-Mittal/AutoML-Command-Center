@@ -17,7 +17,7 @@ export default function DashboardPage() {
 
   async function loadDashboard() {
     try {
-      const health = await api.health();
+      const health = await waitForBackend();
       setBackendStatus(health.status === "ok" ? "ok" : "error");
 
       const [ds, exps, status] = await Promise.allSettled([
@@ -193,6 +193,23 @@ export default function DashboardPage() {
       )}
     </div>
   );
+}
+
+async function waitForBackend(maxAttempts = 6, delayMs = 3500) {
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      return await api.health();
+    } catch (error) {
+      lastError = error;
+      if (attempt < maxAttempts) {
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      }
+    }
+  }
+
+  throw lastError ?? new Error("Backend did not respond");
 }
 
 function StatusCard({
